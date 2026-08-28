@@ -30,4 +30,8 @@
     <Folder Include="Common\Requests\" />
     <Folder Include="Infrastructures\Data\Constants\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="efpt.config.json.user" />
+  </ItemGroup>
 </Project>
