@@ -1,8 +1,3 @@
-using Microsoft.AspNetCore.Http.HttpResults;
-using Org.BouncyCastle.Asn1.Ocsp;
-using SignalPractice.API.Common.Extensions;
-using SignalPractice.API.Common.Request.User;
-
 namespace SignalPractice.API.Controllers
 {
     [Route("api/[controller]/[action]")]

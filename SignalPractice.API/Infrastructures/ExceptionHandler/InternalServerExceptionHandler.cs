@@ -1,4 +1,4 @@
-namespace Lab.Accounting.API.Infrastructures.ExceptionHandler;
+namespace SignalPractice.API.Infrastructures.ExceptionHandler;
 
 public class InternalServerExceptionHandler : IExceptionHandler
 {

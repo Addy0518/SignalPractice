@@ -17,13 +17,13 @@ public partial class User
 
     public DateOnly? UserBirthDate { get; set; }
 
-    public int? UserGender { get; set; }
+    public GenderEnum UserGender { get; set; }
 
     public string UserHeadshot { get; set; }
 
     public string UserRole { get; set; }
 
-    public int? UserRegisterMethod { get; set; }
+    public RegisterMethodEnum UserRegisterMethod { get; set; }
 
     public DateTime RegistrationTime { get; set; }
 

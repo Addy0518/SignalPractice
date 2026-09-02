@@ -10,11 +10,13 @@ export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
+  const accountInstance: typeof import('./api/accountInstance.js').default
   const codeStatusEnum: typeof import('./common/enum.js').codeStatusEnum
   const computed: typeof import('vue').computed
   const couponTypeEnum: typeof import('./common/enum.js').couponTypeEnum
   const createApp: typeof import('vue').createApp
   const createPinia: typeof import('pinia').createPinia
+  const createRoomAPI: typeof import('./api/roomService.js').createRoomAPI
   const customRef: typeof import('vue').customRef
   const defineAsyncComponent: typeof import('vue').defineAsyncComponent
   const defineComponent: typeof import('vue').defineComponent
@@ -37,7 +39,9 @@ declare global {
   const getEnumDescription: typeof import('./common/enum.js').getEnumDescription
   const getError400Message: typeof import('./common/method.js').getError400Message
   const getFirstDayOfMonth: typeof import('./common/formats.js').getFirstDayOfMonth
+  const getRoomInfoAPI: typeof import('./api/roomService.js').getRoomInfoAPI
   const getToast: typeof import('./common/toast.js').getToast
+  const guestLoginAPI: typeof import('./api/userService.js').guestLoginAPI
   const h: typeof import('vue').h
   const httpCodeStatusEnum: typeof import('./common/enum.js').httpCodeStatusEnum
   const inject: typeof import('vue').inject
@@ -47,6 +51,9 @@ declare global {
   const isReadonly: typeof import('vue').isReadonly
   const isRef: typeof import('vue').isRef
   const isShallow: typeof import('vue').isShallow
+  const joinRoomAPI: typeof import('./api/roomService.js').joinRoomAPI
+  const leaveRoomAPI: typeof import('./api/roomService.js').leaveRoomAPI
+  const loginAPI: typeof import('./api/userService.js').loginAPI
   const logisticsEnum: typeof import('./common/enum.js').logisticsEnum
   const mapActions: typeof import('pinia').mapActions
   const mapGetters: typeof import('pinia').mapGetters
@@ -78,6 +85,8 @@ declare global {
   const reactive: typeof import('vue').reactive
   const readonly: typeof import('vue').readonly
   const ref: typeof import('vue').ref
+  const registerAPI: typeof import('./api/userService.js').registerAPI
+  const registerReconnectHandler: typeof import('./common/signalrConnection.js').registerReconnectHandler
   const required: typeof import('./validator/validators.js').required
   const resolveComponent: typeof import('vue').resolveComponent
   const reverseLookupZipCode: typeof import('./common/formats.js').reverseLookupZipCode
@@ -102,7 +111,6 @@ declare global {
   const useAttrs: typeof import('vue').useAttrs
   const useAuthStore: typeof import('./stores/auth.js').useAuthStore
   const useChatUserStore: typeof import('./stores/chatUser.js').useChatUserStore
-  const useCounterStore: typeof import('./stores/counter.js').useCounterStore
   const useCssModule: typeof import('vue').useCssModule
   const useCssVars: typeof import('vue').useCssVars
   const useId: typeof import('vue').useId
@@ -138,11 +146,13 @@ declare module 'vue' {
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
+    readonly accountInstance: UnwrapRef<typeof import('./api/accountInstance.js')['default']>
     readonly codeStatusEnum: UnwrapRef<typeof import('./common/enum.js')['codeStatusEnum']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly couponTypeEnum: UnwrapRef<typeof import('./common/enum.js')['couponTypeEnum']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly createPinia: UnwrapRef<typeof import('pinia')['createPinia']>
+    readonly createRoomAPI: UnwrapRef<typeof import('./api/roomService.js')['createRoomAPI']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly defineAsyncComponent: UnwrapRef<typeof import('vue')['defineAsyncComponent']>
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
@@ -165,7 +175,9 @@ declare module 'vue' {
     readonly getEnumDescription: UnwrapRef<typeof import('./common/enum.js')['getEnumDescription']>
     readonly getError400Message: UnwrapRef<typeof import('./common/method.js')['getError400Message']>
     readonly getFirstDayOfMonth: UnwrapRef<typeof import('./common/formats.js')['getFirstDayOfMonth']>
+    readonly getRoomInfoAPI: UnwrapRef<typeof import('./api/roomService.js')['getRoomInfoAPI']>
     readonly getToast: UnwrapRef<typeof import('./common/toast.js')['getToast']>
+    readonly guestLoginAPI: UnwrapRef<typeof import('./api/userService.js')['guestLoginAPI']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly httpCodeStatusEnum: UnwrapRef<typeof import('./common/enum.js')['httpCodeStatusEnum']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
@@ -175,6 +187,9 @@ declare module 'vue' {
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
+    readonly joinRoomAPI: UnwrapRef<typeof import('./api/roomService.js')['joinRoomAPI']>
+    readonly leaveRoomAPI: UnwrapRef<typeof import('./api/roomService.js')['leaveRoomAPI']>
+    readonly loginAPI: UnwrapRef<typeof import('./api/userService.js')['loginAPI']>
     readonly logisticsEnum: UnwrapRef<typeof import('./common/enum.js')['logisticsEnum']>
     readonly mapActions: UnwrapRef<typeof import('pinia')['mapActions']>
     readonly mapGetters: UnwrapRef<typeof import('pinia')['mapGetters']>
@@ -206,6 +221,8 @@ declare module 'vue' {
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>
     readonly readonly: UnwrapRef<typeof import('vue')['readonly']>
     readonly ref: UnwrapRef<typeof import('vue')['ref']>
+    readonly registerAPI: UnwrapRef<typeof import('./api/userService.js')['registerAPI']>
+    readonly registerReconnectHandler: UnwrapRef<typeof import('./common/signalrConnection.js')['registerReconnectHandler']>
     readonly required: UnwrapRef<typeof import('./validator/validators.js')['required']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly reverseLookupZipCode: UnwrapRef<typeof import('./common/formats.js')['reverseLookupZipCode']>

@@ -11,13 +11,7 @@ public class TokenHelper(IConfiguration _configuration)
     /// <param name="userAddress">使用者的地址</param>
     /// <param name="expireMinutes">Token 過期時間（分鐘）</param>
     /// <returns>生成的 JWT Token 字串</returns>
-    public string GeneratedToken(
-        int userId,
-        string userName,
-        string? userRole,
-        string userAddress,
-        int expireMinutes = 30
-    )
+    public string GeneratedToken(int userId, string userName, string? userRole, int expireMinutes = 30)
     {
         // 拿到設定檔的發行人跟鑰匙
         var issuer = _configuration.GetValue<string>("JwtSettings:Issuer");
@@ -38,6 +32,8 @@ public class TokenHelper(IConfiguration _configuration)
         // 之後在 Controller 可以用 User.FindFirst("UserId")?.Value 取得
         claims.Add(new Claim("UserId", userId.ToString()));
 
+        claims.Add(new Claim("UserName", userName));
+
         // 加入使用者姓名 , Sub 是 jwt 的標準名稱 ( Subject ) , 代表這個 token 是屬於誰的 (這裡是 username) , 筆記裡有寫全套標準名稱
         claims.Add(new Claim(JwtRegisteredClaimNames.Sub, userName));
 
@@ -45,8 +41,6 @@ public class TokenHelper(IConfiguration _configuration)
         {
             claims.Add(new Claim(ClaimTypes.Role, userRole));
         }
-
-        claims.Add(new Claim("UserAddress", userAddress));
 
         // 加入  Guid.NewGuid().ToString() ( 唯一碼 ) 到 Jti 裡防止重複
         claims.Add(new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));

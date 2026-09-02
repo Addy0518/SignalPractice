@@ -10,7 +10,7 @@ public static class ApiResponseHelper
     {
         return new ApiResponse<T>
         {
-            CodeStatus = CodeStatusEnum.Success,
+            CodeStatus = ReturnStatusEnum.Success,
             ReturnData = data,
             Message = message,
         };
@@ -23,9 +23,9 @@ public static class ApiResponseHelper
     {
         return new ApiResponse<T>
         {
-            CodeStatus = CodeStatusEnum.InternalException,
+            CodeStatus = ReturnStatusEnum.InternalException,
             // 就把自訂的 codestatus 的描述訊息當作錯誤訊息回傳就好
-            Message = CodeStatusEnum.InternalException.GetDescription(),
+            Message = ReturnStatusEnum.InternalException.GetDescription(),
             Error500 = errors,
         };
     }
@@ -35,13 +35,13 @@ public static class ApiResponseHelper
     {
         return new ApiResponse<T>
         {
-            CodeStatus = CodeStatusEnum.InternalException,
-            Message = CodeStatusEnum.InternalException.GetDescription(),
+            CodeStatus = ReturnStatusEnum.InternalException,
+            Message = ReturnStatusEnum.InternalException.GetDescription(),
             Error500 = new ProblemDetails
             {
                 Type = "InternalServerError",
                 Status = StatusCodes.Status500InternalServerError,
-                Title = CodeStatusEnum.InternalException.GetDescription(),
+                Title = ReturnStatusEnum.InternalException.GetDescription(),
                 Detail = detail,
             },
         };
@@ -59,9 +59,9 @@ public static class ApiResponseHelper
     {
         return new ApiResponse<T>
         {
-            CodeStatus = CodeStatusEnum.RequestError,
+            CodeStatus = ReturnStatusEnum.RequestError,
             ReturnData = default,
-            Message = CodeStatusEnum.RequestError.GetDescription(),
+            Message = ReturnStatusEnum.RequestError.GetDescription(),
             Error400 = errors,
         };
     }
@@ -70,9 +70,9 @@ public static class ApiResponseHelper
     {
         return new ApiResponse<T>
         {
-            CodeStatus = CodeStatusEnum.NotFound,
+            CodeStatus = ReturnStatusEnum.NotFound,
             ReturnData = default,
-            Message = CodeStatusEnum.NotFound.GetDescription(),
+            Message = ReturnStatusEnum.NotFound.GetDescription(),
         };
     }
 }

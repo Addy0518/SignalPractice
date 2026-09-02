@@ -1,6 +1,3 @@
-using Microsoft.AspNetCore.Identity.Data;
-using SignalPractice.API.Common.Request.User;
-
 namespace SignalPractice.API.Services;
 
 public class UserService(

@@ -27,7 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Common\Requests\" />
     <Folder Include="Infrastructures\Data\Constants\" />
   </ItemGroup>
 

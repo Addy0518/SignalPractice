@@ -1,6 +1,3 @@
-using Org.BouncyCastle.Asn1.Ocsp;
-using SignalPractice.API.Common.Request.Room;
-
 namespace SignalPractice.API.Services;
 
 public class RoomService(
@@ -12,21 +9,21 @@ public class RoomService(
     /// <summary>
     /// 查看房間資訊
     /// </summary>
-    /// <param name="roomId">房間 ID</param>
+    /// <param name="roomCode">房間代碼</param>
     /// <param name="userId">玩家 ID</param>
     /// <returns>房間資訊</returns>
-    public async Task<ApiResponse<RoomResponse>> GetRoomInfo(int roomId, int userId)
+    public async Task<ApiResponse<RoomResponse>> GetRoomInfo(string roomCode, int userId)
     {
-        var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
+        var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomCode == roomCode);
 
         if (room == null)
         {
-            var errors = new Dictionary<string, string[]> { { "RoomId", new[] { "找不到房間！" } } };
+            var errors = new Dictionary<string, string[]> { { "RoomCode", new[] { "找不到房間！" } } };
             return ApiResponseHelper.RequestError<RoomResponse>(errors);
         }
 
         // 檢查是否在這個房間
-        bool isExist = await context.RoomPlayers.AnyAsync(r => r.RoomId == roomId && r.PlayerId == userId);
+        bool isExist = await context.RoomPlayers.AnyAsync(r => r.RoomId == room.RoomId && r.PlayerId == userId);
         if (!isExist)
         {
             var errors = new Dictionary<string, string[]>
@@ -45,6 +42,7 @@ public class RoomService(
             RoomStatus = room.RoomStatus,
             TotalRound = room.TotalRound,
             CurrentRound = room.CurrentRound,
+            CurrentDrawerId = room.CurrentDrawerId,
             RoundSeconds = room.RoundSeconds,
             RoundEndTime = room.RoundEndTime,
             Players = room
@@ -69,15 +67,15 @@ public class RoomService(
     /// <param name="request">房間資訊</param>
     /// <param name="userId">創建者 ID</param>
     /// <param name="userName">創建者姓名</param>
-    /// <returns>房間 ID</returns>
-    public async Task<ApiResponse<int>> CreateRoom(RoomCreateRequest request, int userId, string userName)
+    /// <returns>房間代碼</returns>
+    public async Task<ApiResponse<string>> CreateRoom(RoomCreateRequest request, int userId, string userName)
     {
         // 檢查房間是否已存在
         bool isExist = await context.Rooms.AnyAsync(r => r.RoomName == request.RoomName);
         if (isExist)
         {
             var errors = new Dictionary<string, string[]> { { "RoomName", new[] { "無法重複創建房間！" } } };
-            return ApiResponseHelper.RequestError<int>(errors);
+            return ApiResponseHelper.RequestError<string>(errors);
         }
 
         string roomCode;
@@ -117,7 +115,7 @@ public class RoomService(
         await context.RoomPlayers.AddAsync(hostPlayer);
         await context.SaveChangesAsync();
 
-        return ApiResponseHelper.Success(room.RoomId);
+        return ApiResponseHelper.Success(roomCode);
     }
 
     /// <summary>

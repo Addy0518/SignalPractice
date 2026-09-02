@@ -1,47 +1,82 @@
-import * as signalR from '@microsoft/signalr';
+import * as signalR from '@microsoft/signalr'
+import { useAuthStore } from '@/stores/auth'
 
 /*
   connection 存放目前的 Signal 連線物件
   null 代表還未建立連線
 */
-let connection = null;
+let connection = null
 
 /*
   建立連線並回傳連線物件
 */
 export const startConnection = async () => {
-  const authStore = useAuthStore();
-  const userId = authStore.userId;
+  // 已經有連線的話就重複用
+  if (connection && connection.state === 'Connected') {
+    return connection
+  }
+
+  // 如果有舊連線但不是 Connected，先清掉
+  if (connection) {
+    try {
+      await connection.stop()
+    } catch {}
+    connection = null
+  }
+
+  const authStore = useAuthStore()
+
   // HubConnectionBuilder 是 SignalR 提供的建構器，用來設定連線細節
   connection = new signalR.HubConnectionBuilder()
     // withUrl : 設定要連線的後端 Hub 網址 ( 不是 API 喔 )
-    .withUrl(`http://localhost:5215/chatHub?userId=${userId}`, {
+    .withUrl(`http://localhost:5021/gameHub`, {
       // 第二個參數是額外設定 , 這裡把 JWT token 帶進去，後端才能驗證
       accessTokenFactory: () => authStore.token,
     })
     // withAutomaticReconnect：網路斷線時自動重連
     .withAutomaticReconnect()
     // build：依照上面的設定，正式建立連線物件（但還沒真正連線）
-    .build();
+    .build()
 
-  // connection.start()：真正發起連線，跟後端建立 WebSocket
-  await connection.start();
+  connection.onreconnected(async () => {
+    console.log('🔄 SignalR 已重新連線，重新加入房間群組')
+    for (const cb of reconnectCallbacks) {
+      try {
+        await cb()
+      } catch (err) {
+        console.error('重新加入群組失敗:', err)
+      }
+    }
+  })
+
+  connection.onreconnecting((error) => {
+    console.warn('⚠️ SignalR 連線中斷，嘗試重新連線中...', error)
+  })
+
+  // 開啟連線
+  await connection.start()
 
   // 最後回傳這筆連線的物件 , 讓呼叫人可以使用
-  return connection;
-};
+  return connection
+}
+
+const reconnectCallbacks = []
+
+export const registerReconnectHandler = (cb) => {
+  reconnectCallbacks.push(cb)
+}
 
 /*
   在 export 一個自訂方法來丟出去這個連線物件 , 這樣就像 api 一樣可以給其他 component 用了
 */
-export const getConnection = () => connection;
+export const getConnection = () => connection
 
 /*
   關閉連線並把連線物件清空
 */
 export const stopConnection = async () => {
   if (connection) {
-    await connection.stop();
-    connection = null;
+    await connection.stop()
+    connection = null
   }
-};
+}

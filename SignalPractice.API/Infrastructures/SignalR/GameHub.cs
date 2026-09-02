@@ -3,7 +3,12 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
     /// <summary>
     /// 加入遊戲房間的 SignalR 群組 , 玩家進入等待室或遊戲頁面時呼叫
     /// </summary>
-    public class GameHub(SignalPracticeContext context) : Hub
+    public class GameHub(
+        SignalPracticeContext context,
+        ILogger<GameHub> logger,
+        IServiceScopeFactory scopeFactory,
+        IHubContext<GameHub> hubContext
+    ) : Hub
     {
         private int CurrentUserId => int.Parse(Context.User?.FindFirst("UserId")?.Value ?? "0");
 
@@ -14,11 +19,27 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         private static readonly Dictionary<int, HashSet<int>> _roomWords = new();
 
         /// <summary>
-        /// 使用者斷線時清除 , base.OnDisconnectedAsync 就是斷線時觸發
+        /// 斷開連線
         /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             await base.OnDisconnectedAsync(exception);
+        }
+
+        /// <summary>
+        /// 開始連線
+        /// </summary>
+        public override async Task OnConnectedAsync()
+        {
+            await base.OnConnectedAsync();
+        }
+
+        /// <summary>
+        /// 加入用戶專屬群組 , 用來單獨推送只有特定玩家該看到的訊息
+        /// </summary>
+        public async Task AddToUserGroup(int userId)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
         }
 
         /// <summary>
@@ -31,7 +52,11 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
             var player = await context.RoomPlayers.FirstOrDefaultAsync(r => r.RoomId == roomId && r.PlayerId == userId);
 
             if (player == null)
+            {
+                logger.LogInformation($"玩家未找到 userId={userId}");
                 return;
+            }
+
             // Groups 是將這個連線加入指定群組 , 讓在群組裡的人都能收到訊息
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
 
@@ -49,6 +74,14 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
 
             // 廣播給房間裡所有人：有人加入了
             await Clients.Group(roomId.ToString()).SendAsync("PlayerJoined", playerInfo);
+
+            // 如果房間已經在遊戲中，且我剛好是目前畫畫的人，補送一次題目 —— 避免 StartGame 廣播時 Game.vue 監聽器還沒掛載完，訊息被吃掉
+            // 只要我是目前正在畫的人，重新整理頁面或重新連線後，這裡都會再補一次正確題目
+            var room = await context.Rooms.FirstOrDefaultAsync(r => r.RoomId == roomId);
+            if (room != null && room.RoomStatus == RoomStatusEnum.遊戲中 && room.CurrentDrawerId == userId)
+            {
+                await Clients.Caller.SendAsync("YourTopic", new { Word = room.CurrentTopic });
+            }
         }
 
         /// <summary>
@@ -63,6 +96,7 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
             if (player == null)
                 return;
 
+            // 從群組移出
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId.ToString());
 
             player.IsOnline = 0;
@@ -77,131 +111,209 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         /// </summary>
         public async Task StartGame(int roomId)
         {
-            var userId = CurrentUserId;
-
-            _roomWords[roomId] = new HashSet<int>();
-
-            var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
-
-            if (room == null)
-                return;
-
-            // 只有房主才能開始
-            if (room.RoomOwnerId != userId)
-                return;
-
-            // 找出所有在線的玩家 , 並且至少要有兩個人才能開始遊戲
-            var onlinePlayers = room.RoomPlayers.Where(p => p.IsOnline == 1).ToList();
-            if (onlinePlayers.Count < 2)
-                return;
-
-            // Random.Shared 是 .Net 內建共用實例 , 用來產生隨機變數的 , 比 new Random() 更好用
-            // 把在線玩家隨機排序，並且指定畫畫順序
-            var AllPlayers = onlinePlayers.OrderBy(_ => Random.Shared.Next()).ToList();
-            for (int i = 0; i < AllPlayers.Count(); i++)
+            try
             {
-                AllPlayers[i].DrawOrder = i + 1;
+                var userId = CurrentUserId;
+
+                // 每次開新遊戲，重置這個房間的已出題記錄
+                _roomWords[roomId] = new HashSet<int>();
+
+                var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
+
+                if (room == null)
+                    return;
+
+                // 只有房主才能開始
+                if (room.RoomOwnerId != userId)
+                {
+                    await Clients.Caller.SendAsync("Error", "只有房主可以結束遊戲！");
+                    return;
+                }
+
+                // 找出所有在線的玩家 , 並且至少要有兩個人才能開始遊戲
+                var onlinePlayers = room.RoomPlayers.Where(p => p.IsOnline == 1).ToList();
+                if (onlinePlayers.Count < 2)
+                {
+                    await Clients.Caller.SendAsync("Error", $"人數不足！onlinePlayers={onlinePlayers.Count}");
+                    return;
+                }
+
+                // Random.Shared 是 .Net 內建共用實例 , 用來產生隨機變數的 , 比 new Random() 更好用
+                // 把在線玩家隨機排序，並且指定畫畫順序
+                var AllPlayers = onlinePlayers.OrderBy(_ => Random.Shared.Next()).ToList();
+                for (int i = 0; i < AllPlayers.Count(); i++)
+                {
+                    AllPlayers[i].DrawOrder = i + 1;
+                }
+
+                // 找到第一個畫畫的人
+                var firstDrawer = AllPlayers.First();
+
+                // 自訂的隨機指定題目方法
+                var randomWord = await GetRoomsWord(roomId, context);
+
+                // 更新房間狀態
+                room.RoomStatus = RoomStatusEnum.遊戲中;
+                room.CurrentRound = 1;
+                room.CurrentDrawerId = firstDrawer.PlayerId;
+                room.CurrentTopic = randomWord?.Word;
+                room.RoundEndTime = DateTime.UtcNow.AddSeconds(room.RoundSeconds);
+
+                await context.SaveChangesAsync();
+
+                // 廣播給所有人遊戲開始
+                // 不包含題目，題目只推給畫畫的人
+                await Clients
+                    .Group(roomId.ToString())
+                    .SendAsync(
+                        "GameStarted",
+                        new
+                        {
+                            DrawerId = firstDrawer.PlayerId,
+                            DrawerName = firstDrawer.PlayerName,
+                            CurrentRound = room.CurrentRound,
+                            TotalRound = room.TotalRound,
+                            RoundSeconds = room.RoundSeconds,
+                            RoundEndTime = room.RoundEndTime,
+                        }
+                    );
+
+                // 單獨推題目給畫畫的人
+                await Clients
+                    .Group($"user_{firstDrawer.PlayerId}")
+                    .SendAsync("YourTopic", new { Word = randomWord?.Word });
+
+                // 啟動計時器
+                // 因為這裡要讓他在背景執行 ( 倒數計時 ) , 所以從這裡開始就要新建立 context 了
+                _ = StartRoundTimer(roomId, room.RoundSeconds);
             }
+            catch (Exception ex)
+            {
+                await Clients.Caller.SendAsync("Error", ex.Message);
+            }
+        }
 
-            // 找到第一個畫畫的人
-            var firstDrawer = AllPlayers.First();
+        /// <summary>
+        /// 房主結束遊戲
+        /// </summary>
+        public async Task EndGame(int roomId)
+        {
+            try
+            {
+                var userId = CurrentUserId;
 
-            // 自訂的隨機指定題目方法
-            var randomWord = await GetRoomsWord(roomId);
+                var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
 
-            // 更新房間狀態
-            room.RoomStatus = RoomStatusEnum.遊戲中;
-            room.CurrentRound = 1;
-            room.CurrentDrawerId = firstDrawer.PlayerId;
-            room.CurrentTopic = randomWord?.Word;
-            room.RoundEndTime = DateTime.UtcNow.AddSeconds(room.RoundSeconds);
+                if (room == null || room.RoomStatus != RoomStatusEnum.遊戲中)
+                    return;
 
-            await context.SaveChangesAsync();
+                // 只有房主才能開始
+                if (room.RoomOwnerId != userId)
+                {
+                    await Clients.Caller.SendAsync("Error", "只有房主可以結束遊戲！");
+                    return;
+                }
 
-            // 廣播給所有人遊戲開始
-            // 不包含題目，題目只推給畫畫的人
-            await Clients
-                .Group(roomId.ToString())
-                .SendAsync(
-                    "GameStarted",
-                    new
-                    {
-                        DrawerId = firstDrawer.PlayerId,
-                        DrawerName = firstDrawer.PlayerName,
-                        CurrentRound = room.CurrentRound,
-                        TotalRound = room.TotalRound,
-                        RoundSeconds = room.RoundSeconds,
-                        RoundEndTime = room.RoundEndTime,
-                    }
-                );
+                room.RoomStatus = RoomStatusEnum.已結束;
+                await context.SaveChangesAsync();
 
-            // 單獨推題目給畫畫的人
-            await Clients.Group($"user_{firstDrawer.PlayerId}").SendAsync("YourTopic", new { Word = randomWord?.Word });
-
-            // 啟動計時器
-            _ = StartRoundTimer(roomId, room.RoundSeconds);
+                await Clients
+                    .Group(roomId.ToString())
+                    .SendAsync(
+                        "GameEnd",
+                        new
+                        {
+                            Rankings = room
+                                .RoomPlayers.OrderByDescending(p => p.Score)
+                                .Select(
+                                    (p, index) =>
+                                        new
+                                        {
+                                            // index 是從 0 開始的，所以要 +1 才是正確的名次
+                                            Rank = index + 1,
+                                            p.PlayerId,
+                                            p.PlayerName,
+                                            p.Score,
+                                        }
+                                ),
+                        }
+                    );
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"EndGame  發生例外 roomId={roomId}");
+            }
         }
 
         /// <summary>
         /// 進入下一輪
         /// </summary>
-        public async Task NextRound(int roomId)
+        /// <param name="dbContext"> 呼叫端傳入的 DbContext。呼叫鏈的最源頭是 StartRoundTime</param>
+        public async Task NextRound(int roomId, SignalPracticeContext dbContext)
         {
-            var userId = CurrentUserId;
-
-            var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
-
-            if (room == null)
-                return;
-
-            var currentDrawer = room.RoomPlayers.FirstOrDefault(p => p.PlayerId == room.CurrentDrawerId);
-
-            // 換下一個畫畫的人
-            int nextDrawOrder = currentDrawer.DrawOrder + 1;
-
-            var onlinePlayers = room.RoomPlayers.Count(p => p.IsOnline == 1);
-
-            // 如果下一個畫畫的人超過在線玩家數量，則回到第一個畫畫的人
-            if (nextDrawOrder > onlinePlayers)
+            try
             {
-                nextDrawOrder = 1;
+                var room = await dbContext
+                    .Rooms.Include(r => r.RoomPlayers)
+                    .FirstOrDefaultAsync(r => r.RoomId == roomId);
+
+                if (room == null)
+                    return;
+
+                var currentDrawer = room.RoomPlayers.FirstOrDefault(p => p.PlayerId == room.CurrentDrawerId);
+
+                if (currentDrawer == null)
+                    return;
+
+                // 換下一個畫畫的人
+                int nextDrawOrder = currentDrawer.DrawOrder + 1;
+
+                var onlinePlayers = room.RoomPlayers.Count(p => p.IsOnline == 1);
+
+                // 如果下一個畫畫的人超過在線玩家數量，則回到第一個畫畫的人
+                if (nextDrawOrder > onlinePlayers)
+                {
+                    nextDrawOrder = 1;
+                }
+
+                var nextDrawer = room.RoomPlayers.FirstOrDefault(p => p.DrawOrder == nextDrawOrder);
+
+                // 自訂的隨機指定題目方法
+                var randomWord = await GetRoomsWord(roomId, dbContext);
+
+                // 更新房間狀態
+                room.CurrentRound = room.CurrentRound + 1;
+                room.CurrentDrawerId = nextDrawer.PlayerId;
+                room.CurrentTopic = randomWord?.Word;
+                room.RoundEndTime = DateTime.UtcNow.AddSeconds(room.RoundSeconds);
+
+                await dbContext.SaveChangesAsync();
+
+                // 接下來就跟 StartGame 一樣
+                await hubContext
+                    .Clients.Group(roomId.ToString())
+                    .SendAsync(
+                        "GameStarted",
+                        new
+                        {
+                            DrawerId = nextDrawer.PlayerId,
+                            DrawerName = nextDrawer.PlayerName,
+                            CurrentRound = room.CurrentRound,
+                            TotalRound = room.TotalRound,
+                            RoundSeconds = room.RoundSeconds,
+                            RoundEndTime = room.RoundEndTime,
+                        }
+                    );
+                await hubContext
+                    .Clients.Group($"user_{nextDrawer.PlayerId}")
+                    .SendAsync("YourTopic", new { Word = randomWord?.Word });
+
+                _ = StartRoundTimer(roomId, room.RoundSeconds);
             }
-
-            var nextDrawer = room.RoomPlayers.FirstOrDefault(p => p.DrawOrder == nextDrawOrder);
-
-            // 自訂的隨機指定題目方法
-            var randomWord = await GetRoomsWord(roomId);
-
-            // 更新房間狀態
-            room.CurrentRound = room.CurrentRound + 1;
-            room.CurrentDrawerId = nextDrawer.PlayerId;
-            room.CurrentTopic = randomWord?.Word;
-            room.RoundEndTime = DateTime.UtcNow.AddSeconds(room.RoundSeconds);
-
-            await context.SaveChangesAsync();
-
-            // 廣播給所有人遊戲開始
-            // 不包含題目，題目只推給畫畫的人
-            await Clients
-                .Group(roomId.ToString())
-                .SendAsync(
-                    "GameStarted",
-                    new
-                    {
-                        DrawerId = nextDrawer.PlayerId,
-                        DrawerName = nextDrawer.PlayerName,
-                        CurrentRound = room.CurrentRound,
-                        TotalRound = room.TotalRound,
-                        RoundSeconds = room.RoundSeconds,
-                        RoundEndTime = room.RoundEndTime,
-                    }
-                );
-
-            // 單獨推題目給畫畫的人
-            await Clients.Group($"user_{nextDrawer.PlayerId}").SendAsync("YourTopic", new { Word = randomWord?.Word });
-
-            // 啟動計時器
-            _ = StartRoundTimer(roomId, room.RoundSeconds);
+            catch (Exception ex)
+            {
+                logger.LogError(ex, $"❌ NextRound 發生例外 roomId={roomId}");
+            }
         }
 
         /// <summary>
@@ -216,6 +328,7 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
             if (room == null)
                 return;
 
+            // 畫畫的人不能猜
             if (userId == room.CurrentDrawerId)
                 return;
 
@@ -240,6 +353,7 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
 
             if (isCorrect)
             {
+                // 猜對 + 10 分 ( 暫時 )
                 int score = 10;
                 player.Score += score;
 
@@ -278,7 +392,7 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                 // 如果所有人都猜對了就提早結束這回合
                 if (correctPlayers >= onlinePlayers.Count)
                 {
-                    await EndRound(roomId);
+                    await EndRound(roomId, context);
                 }
             }
             else
@@ -355,95 +469,117 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
 
         /// <summary>
         /// 每輪的計時器，時間到自動結束這輪
+        ///
+        /// 補充概念 :
+        /// SignalR 的 Hub 是「每次方法呼叫」建立一個新的實例 , 假設某個方法 ( 比如 StartGame ) 被呼叫完後就會丟掉 , 包括建構子注入的 context 也一樣
+        /// 這也是為何 StartRoundTimer 這個方法要再多實例出一個 context , 因為她有延遲計算的邏輯 ( Task.Delay ) , 他是在倒數完 60 秒之後才執行 , 所以當執行到這時原本的 context 早就被丟掉了
+        ///
+        /// 簡單區分的話就是呼叫當下就執行 , 就用一般 context 就好
+        /// 不是在呼叫當下執行的就要在新創一個 context
         /// </summary>
         private async Task StartRoundTimer(int roomId, int seconds)
         {
             // 等待這輪的秒數
             await Task.Delay(TimeSpan.FromSeconds(seconds));
 
+            // using 確保這個新開的 scope（連同裡面的 DbContext）在用完後會被正確釋放
+            // 不會造成 DbContext 一直堆積、記憶體洩漏
+            using var scope = scopeFactory.CreateScope();
+            var scopedContext = scope.ServiceProvider.GetRequiredService<SignalPracticeContext>();
+
             // 時間到，執行 EndRound ( 自訂的方法 )
-            await EndRound(roomId);
+            await EndRound(roomId, scopedContext);
         }
 
         /// <summary>
         /// 結束這一輪
         /// </summary>
-        private async Task EndRound(int roomId)
+        private async Task EndRound(int roomId, SignalPracticeContext dbContext)
         {
-            var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
-
-            if (room == null || room.RoomStatus != RoomStatusEnum.遊戲中)
-                return;
-
-            // 公布這輪答案和分數給所有人
-            await Clients
-                .Group(roomId.ToString())
-                .SendAsync(
-                    "RoundEnd",
-                    new
-                    {
-                        Word = room.CurrentTopic,
-                        Scores = room.RoomPlayers.Select(p => new
-                        {
-                            p.PlayerId,
-                            p.PlayerName,
-                            p.Score,
-                        }),
-                    }
-                );
-
-            // 判斷是否還有下一輪
-            if (room.CurrentRound >= room.TotalRound)
+            try
             {
-                // 遊戲結束
-                room.RoomStatus = RoomStatusEnum.已結束;
-                await context.SaveChangesAsync();
+                var room = await dbContext
+                    .Rooms.Include(r => r.RoomPlayers)
+                    .FirstOrDefaultAsync(r => r.RoomId == roomId);
 
-                await Clients
-                    .Group(roomId.ToString())
+                if (room == null || room.RoomStatus != RoomStatusEnum.遊戲中)
+                    return;
+
+                // 公布這輪答案和分數給所有人
+                await hubContext
+                    .Clients.Group(roomId.ToString())
                     .SendAsync(
-                        "GameEnd",
+                        "RoundEnd",
                         new
                         {
-                            Rankings = room
-                                .RoomPlayers.OrderByDescending(p => p.Score)
-                                .Select(
-                                    (p, index) =>
-                                        new
-                                        {
-                                            // index 是從 0 開始的，所以要 +1 才是正確的名次
-                                            Rank = index + 1,
-                                            p.PlayerId,
-                                            p.PlayerName,
-                                            p.Score,
-                                        }
-                                ),
+                            Word = room.CurrentTopic,
+                            Scores = room.RoomPlayers.Select(p => new
+                            {
+                                p.PlayerId,
+                                p.PlayerName,
+                                p.Score,
+                            }),
                         }
                     );
+
+                // 判斷是否還有下一輪
+                if (room.CurrentRound >= room.TotalRound)
+                {
+                    // 遊戲結束
+                    room.RoomStatus = RoomStatusEnum.已結束;
+                    await dbContext.SaveChangesAsync();
+
+                    await hubContext
+                        .Clients.Group(roomId.ToString())
+                        .SendAsync(
+                            "GameEnd",
+                            new
+                            {
+                                Rankings = room
+                                    .RoomPlayers.OrderByDescending(p => p.Score)
+                                    .Select(
+                                        (p, index) =>
+                                            new
+                                            {
+                                                // index 是從 0 開始的，所以要 +1 才是正確的名次
+                                                Rank = index + 1,
+                                                p.PlayerId,
+                                                p.PlayerName,
+                                                p.Score,
+                                            }
+                                    ),
+                            }
+                        );
+                }
+                else
+                {
+                    // 進入下一輪
+                    await NextRound(roomId, dbContext);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                // 進入下一輪
-                await NextRound(roomId);
+                // ✅ 關鍵：把背景工作裡的例外印出來，不然會被靜默吞掉
+                logger.LogError(ex, $"❌ EndRound 發生例外 roomId={roomId}");
             }
         }
 
         /// <summary>
         /// 抽取一個還未用過的題目
         /// </summary>
-        private async Task<WorkBank> GetRoomsWord(int roomId)
+        private async Task<WorkBank> GetRoomsWord(int roomId, SignalPracticeContext dbContext)
         {
             // 先從 _roomWords 這個字典裡找出這個房間已經用過的題目 , 沒用過題目的話就創建新集合 ( new HashSet )
             var useWordIds = _roomWords.TryGetValue(roomId, out var ids) ? ids : new HashSet<int>();
 
             // 拿出資料庫裡還沒用過的題目集合
-            var canUseWords = await context.WorkBanks.Where(w => !useWordIds.Contains(w.WorkBankId)).ToListAsync();
+            var canUseWords = await dbContext.WorkBanks.Where(w => !useWordIds.Contains(w.WorkBankId)).ToListAsync();
 
             // 如果資料庫題目都用完了 , 就清空已用過題目集合 , 重新拿出資料庫裡所有題目
             if (canUseWords.Count == 0)
             {
                 useWordIds.Clear();
-                canUseWords = await context.WorkBanks.ToListAsync();
+                canUseWords = await dbContext.WorkBanks.ToListAsync();
             }
 
             // 隨機指定題目

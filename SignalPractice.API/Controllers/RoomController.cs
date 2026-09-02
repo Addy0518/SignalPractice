@@ -1,8 +1,3 @@
-using Microsoft.AspNetCore.Http.HttpResults;
-using Org.BouncyCastle.Asn1.Ocsp;
-using SignalPractice.API.Common.Extensions;
-using SignalPractice.API.Common.Request.Room;
-
 namespace SignalPractice.API.Controllers
 {
     [Route("api/[controller]/[action]")]
@@ -19,13 +14,13 @@ namespace SignalPractice.API.Controllers
         /// <summary>
         /// 查看房間資訊
         /// </summary>
-        /// <param name="roomId">房間 ID</param>
+        /// <param name="roomCode">房間代碼</param>
         /// <returns>房間資訊</returns>
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<RoomResponse>))]
-        public async Task<IActionResult> GetRoomInfo([FromQuery] int roomId)
+        public async Task<IActionResult> GetRoomInfo([FromQuery] string roomCode)
         {
-            var result = await roomService.GetRoomInfo(roomId, CurrentUserId);
+            var result = await roomService.GetRoomInfo(roomCode, CurrentUserId);
             return result.ToActionResult();
         }
 
@@ -33,9 +28,9 @@ namespace SignalPractice.API.Controllers
         /// 創建房間
         /// </summary>
         /// <param name="request">房間資訊</param>
-        /// <returns>房間 ID</returns>
+        /// <returns>房間代碼</returns>
         [HttpPost]
-        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<int>))]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<string>))]
         public async Task<IActionResult> CreateRoom([FromBody] RoomCreateRequest request)
         {
             var result = await roomService.CreateRoom(request, CurrentUserId, CurrentUserName);

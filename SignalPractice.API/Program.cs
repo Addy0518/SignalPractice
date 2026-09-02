@@ -1,13 +1,3 @@
-using System.Text;
-using System.Threading.RateLimiting;
-using Dapper;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using NSwag;
-using NSwag.Generation.Processors.Security;
-using Serilog;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // 加入剛剛設定的 SerilogConfig , 在系統初始化時就先執行 Serilog , 確保系統沒啟動也能夠記錄起來
@@ -23,6 +13,10 @@ try
     // 開始註冊 DI 服務
     // AddSerilog 是把 Serilog 整合進 ASP.NET Core 的 ILogger 系統，這樣注入 ILogger<T> 的地方實際上會使用 Serilog 來輸出 Log 紀錄
     builder.Services.AddSerilog();
+
+    builder.Services.AddDbContext<SignalPracticeContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("DBConnecting"))
+    );
 
     // 註冊 Controller
     builder
@@ -42,7 +36,7 @@ try
 
                 var response = new ApiResponse<object>
                 {
-                    CodeStatus = CodeStatusEnum.RequestError,
+                    CodeStatus = ReturnStatusEnum.RequestError,
                     Message = "驗證失敗",
                     Error400 = errors,
                 };
@@ -197,6 +191,20 @@ try
                     Encoding.UTF8.GetBytes(builder.Configuration.GetValue<string>("JwtSettings:SignKey"))
                 ),
             };
+
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    var path = context.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/gameHub"))
+                    {
+                        context.Token = accessToken;
+                    }
+                    return Task.CompletedTask;
+                },
+            };
         });
 
     // AddExceptionHandler 註測全域例外處理器 , 交給自訂的 InternalServerExceptionHandler 處理
@@ -278,11 +286,10 @@ try
     app.UseExceptionHandler();
 
     app.UseAuthentication();
-    app.UseMiddleware<TokenBlackListMiddleware>();
     app.UseAuthorization();
     app.UseRateLimiter();
 
-    app.MapHub<ChatHub>("/chatHub");
+    app.MapHub<GameHub>("/GameHub");
 
     app.MapControllers();
 
