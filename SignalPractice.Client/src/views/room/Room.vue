@@ -15,8 +15,18 @@ const roomInfo = ref(null)
 const players = ref([])
 
 /*
-    初始化：建立 SignalR 連線
-  */
+   是否為房主
+*/
+const isHost = computed(() => roomInfo.value?.roomOwnerId === authStore.userId)
+
+/*
+   計算房間剩餘的空位
+   Math.max 取最大數 ( 在 0 和 6 - 玩家人數 之間，取數值比較大的那一個（最大值）, 假設玩家近來兩個就是 0 , 6-2=4 , 取 4 )
+*/
+const emptySlots = computed(() => Math.max(0, 6 - players.value.length))
+/*
+    初始化
+*/
 onMounted(async () => {
   try {
     showLoading()
@@ -31,9 +41,6 @@ onMounted(async () => {
     // 建立 SignalR 連線
     await startConnection()
     const conn = getConnection()
-
-    // 加入 SignalR 群組
-    await conn.invoke('JoinRoom', roomInfo.value.roomId)
 
     // 監聽有人加入
     conn.on('PlayerJoined', (player) => {
@@ -50,6 +57,8 @@ onMounted(async () => {
     conn.on('GameStarted', () => {
       router.push({ name: 'game', params: { code: roomCode } })
     })
+    
+    await conn.invoke('JoinRoom', roomInfo.value.roomId)
   } catch (err) {
     console.error(err)
   } finally {
@@ -77,9 +86,6 @@ const leaveRoom = async () => {
   if (conn) await conn.invoke('LeaveRoom', roomInfo.value.roomId)
   router.push({ name: 'loginView' })
 }
-
-const isHost = computed(() => roomInfo.value?.roomOwnerId === authStore.userId)
-const emptySlots = computed(() => Math.max(0, 6 - players.value.length))
 </script>
 
 <template>
@@ -101,7 +107,7 @@ const emptySlots = computed(() => Math.max(0, 6 - players.value.length))
       class="text-3xl font-black text-white mb-1"
       style="text-shadow: 0 2px 0 rgba(0, 0, 0, 0.15)"
     >
-      ⏳ 等待室
+      等待室
     </h1>
     <p class="text-white/70 text-xs font-extrabold tracking-widest mb-6">等待玩家加入</p>
     <!-- #endregion -->
@@ -143,9 +149,7 @@ const emptySlots = computed(() => Math.max(0, 6 - players.value.length))
         >
           <div
             class="w-8 h-8 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-base shrink-0"
-          >
-            😊
-          </div>
+          ></div>
           <span class="flex-1 text-sm font-extrabold text-slate-700">{{ player.playerName }}</span>
           <span
             v-if="player.playerId === roomInfo?.roomOwnerId"
@@ -184,7 +188,7 @@ const emptySlots = computed(() => Math.max(0, 6 - players.value.length))
             : 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed'
         "
       >
-        {{ players.length >= 2 ? '開始遊戲 🎮' : '至少需要 2 位玩家' }}
+        {{ players.length >= 2 ? '開始遊戲 ! ' : '至少需要 2 位玩家' }}
       </button>
 
       <div

@@ -13,8 +13,16 @@ const roomName = ref(authStore.userName + ' 的房間')
 const selectedRound = ref(5)
 const selectedSeconds = ref(60)
 
+/*
+  回合數
+*/
 const roundOptions = [3, 5, 8, 10]
+
+/*
+  每回合秒數
+*/
 const secondsOptions = [30, 60, 90]
+
 
 /*
   建立房間
@@ -47,7 +55,7 @@ const createRoom = async () => {
   >
     <!--#region 返回按鈕 -->
     <button
-      @click="router.push({ name: 'lobby' })"
+      @click="router.push({ name: 'loginView' })"
       class="self-start mb-4 text-white/80 font-extrabold text-sm flex items-center gap-1 hover:text-white cursor-pointer bg-transparent border-none"
     >
       ← 返回

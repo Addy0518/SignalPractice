@@ -135,21 +135,23 @@ public class RoomService(
             return ApiResponseHelper.RequestError<bool>(errors);
         }
 
+        // 檢查是否已在這個房間
+        var player = await context.RoomPlayers.FirstOrDefaultAsync(r =>
+            r.RoomId == room.RoomId && r.PlayerId == userId
+        );
+        if (player != null)
+        {
+            player.IsOnline = 1;
+            await context.SaveChangesAsync();
+            return ApiResponseHelper.Success(true);
+        }
+
         // 檢查房間狀態
         if (room.RoomStatus != RoomStatusEnum.等待中)
         {
             var errors = new Dictionary<string, string[]> { { "RoomStatus", new[] { "遊戲已開始，無法加入！" } } };
             return ApiResponseHelper.RequestError<bool>(errors);
         }
-
-        // 檢查是否已在這個房間
-        bool isExist = await context.RoomPlayers.AnyAsync(r => r.RoomId == room.RoomId && r.PlayerId == userId);
-        if (isExist)
-        {
-            var errors = new Dictionary<string, string[]> { { "UserId", new[] { "你已經在這個房間了！" } } };
-            return ApiResponseHelper.RequestError<bool>(errors);
-        }
-
         // 檢查房間人數上限（最多 6 人）
         int playerCount = await context.RoomPlayers.CountAsync(r => r.RoomId == room.RoomId);
         if (playerCount >= 6)

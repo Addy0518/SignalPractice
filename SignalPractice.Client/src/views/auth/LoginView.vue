@@ -169,7 +169,6 @@ const joinOneRoom = async () => {
           >
             加入 →
           </button>
-          <p class="text-center text-xs text-slate-300 font-bold mt-2">代碼共 6 碼</p>
         </div>
         <!-- #endregion -->
       </div>

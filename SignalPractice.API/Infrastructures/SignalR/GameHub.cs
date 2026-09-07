@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Lab.Accounting.API.Infrastructures.SignalR
 {
     /// <summary>
@@ -23,6 +25,17 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
+            int userId = CurrentUserId;
+
+            var user = await context.RoomPlayers.FirstOrDefaultAsync(c => c.PlayerId == userId);
+
+            if (user != null)
+            {
+                user.IsOnline = 0;
+                await context.SaveChangesAsync();
+
+                await Clients.Group(user.RoomId.ToString()).SendAsync("PlayerLeft", userId);
+            }
             await base.OnDisconnectedAsync(exception);
         }
 
@@ -49,13 +62,14 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         {
             int userId = CurrentUserId;
 
+            var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
+            if (room == null)
+                return;
+
             var player = await context.RoomPlayers.FirstOrDefaultAsync(r => r.RoomId == roomId && r.PlayerId == userId);
 
             if (player == null)
-            {
-                logger.LogInformation($"玩家未找到 userId={userId}");
                 return;
-            }
 
             // Groups 是將這個連線加入指定群組 , 讓在群組裡的人都能收到訊息
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId.ToString());
@@ -77,10 +91,29 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
 
             // 如果房間已經在遊戲中，且我剛好是目前畫畫的人，補送一次題目 —— 避免 StartGame 廣播時 Game.vue 監聽器還沒掛載完，訊息被吃掉
             // 只要我是目前正在畫的人，重新整理頁面或重新連線後，這裡都會再補一次正確題目
-            var room = await context.Rooms.FirstOrDefaultAsync(r => r.RoomId == roomId);
-            if (room != null && room.RoomStatus == RoomStatusEnum.遊戲中 && room.CurrentDrawerId == userId)
+            if (room.RoomStatus == RoomStatusEnum.遊戲中)
             {
-                await Clients.Caller.SendAsync("YourTopic", new { Word = room.CurrentTopic });
+                // 用 Clients.Caller 而不是 Clients.Group，因為題目只要推給自己就好
+                // 用 Group 推送給所有人的話 , 怕把別人的畫布也重製狀態清空
+                await Clients.Caller.SendAsync(
+                    "GameStarted",
+                    new
+                    {
+                        DrawerId = room.CurrentDrawerId,
+                        DrawerName = room
+                            .RoomPlayers.FirstOrDefault(p => p.PlayerId == room.CurrentDrawerId)
+                            ?.PlayerName,
+                        CurrentRound = room.CurrentRound,
+                        TotalRound = room.TotalRound,
+                        RoundSeconds = room.RoundSeconds,
+                        RoundEndTime = room.RoundEndTime,
+                    }
+                );
+
+                if (room.CurrentDrawerId == userId)
+                {
+                    await Clients.Caller.SendAsync("YourTopic", new { Word = room.CurrentTopic });
+                }
             }
         }
 
@@ -205,11 +238,19 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                 var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomId == roomId);
 
                 if (room == null || room.RoomStatus != RoomStatusEnum.遊戲中)
+                {
+                    logger.LogWarning("EndGame 提早結束：房間不存在或狀態不是遊戲中");
                     return;
+                }
 
                 // 只有房主才能開始
                 if (room.RoomOwnerId != userId)
                 {
+                    logger.LogWarning(
+                        "EndGame 提早結束：呼叫者不是房主 (userId={UserId}, roomOwnerId={RoomOwnerId})",
+                        userId,
+                        room.RoomOwnerId
+                    );
                     await Clients.Caller.SendAsync("Error", "只有房主可以結束遊戲！");
                     return;
                 }
@@ -366,8 +407,8 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                         "GuessCorrect",
                         new
                         {
-                            DrawerId = player.PlayerId,
-                            DrawerName = player.PlayerName,
+                            PlayerId = player.PlayerId,
+                            PlayerName = player.PlayerName,
                             Score = score,
                             TotalScore = player.Score,
                         }
@@ -377,13 +418,16 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                     .RoomPlayers.Where(p => p.IsOnline == 1 && p.PlayerId != room.CurrentDrawerId)
                     .ToList();
 
+                // 計算這輪開始的時間，因為猜對的人可能在這輪結束前才猜對，所以要用 RoundEndTime 減去 RoundSeconds 才能得到這輪開始的時間
+                var roundStartTime = room.RoundEndTime.Value.AddSeconds(-room.RoundSeconds);
+
                 // 查看所有猜對的人
                 var correctPlayers = await context
                     .GuessMessages.Where(m =>
                         m.RoomId == roomId
                         && m.IsCorrect
                         && m.PlayerId != room.CurrentDrawerId
-                        && m.CreateTime >= room.RoundEndTime
+                        && m.CreateTime >= roundStartTime
                     )
                     .Select(m => m.PlayerId)
                     .Distinct()
@@ -406,8 +450,8 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                         "GuessInCorrect",
                         new
                         {
-                            DrawerId = player.PlayerId,
-                            DrawerName = player.PlayerName,
+                            PlayerId = player.PlayerId,
+                            PlayerName = player.PlayerName,
                             Content = guess,
                             IsCorrect = false,
                         }

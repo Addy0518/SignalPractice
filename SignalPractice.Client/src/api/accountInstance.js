@@ -56,9 +56,11 @@ instance.interceptors.response.use(
     // 管理各種 api 錯誤
     switch (status) {
       case httpCodeStatusEnum.BadRequest:
-        const errorMsg = Object.values(data.errors)
-          .flatMap((x) => x)
-          .join('\n')
+        const errorMsg = data.error400
+          ? Object.values(data.error400)
+              .flatMap((x) => x)
+              .join('\n')
+          : data.message || '驗證錯誤'
         toast.add({ severity: 'error', summary: '驗證錯誤', detail: errorMsg, life: 3000 })
         break
 

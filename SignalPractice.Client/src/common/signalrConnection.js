@@ -61,7 +61,9 @@ export const startConnection = async () => {
 }
 
 const reconnectCallbacks = []
-
+/*
+  註冊斷線重連後必須重新執行的動作
+*/
 export const registerReconnectHandler = (cb) => {
   reconnectCallbacks.push(cb)
 }

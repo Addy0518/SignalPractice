@@ -52,18 +52,28 @@ const isHost = computed(() => roomInfo.value?.roomOwnerId === authStore.userId)
 
 /*
   玩家排行（依分數排序）
-  用 [...players.value] 展開是為了不直接改變原陣列
+  用 [...players.value] 複製一份新陣列來避免動到本來的陣列 ( 常見的防禦性寫法 , 要動陣列的話都盡量這樣寫 )
+  sort 比對陣列裡的值 b - a 如果是正數 ( b 比 a 大 ) , b 就排在 a 前面 , 反之亦然
 */
 const sortedPlayers = computed(() => [...players.value].sort((a, b) => b.score - a.score))
 
+/*
+   前端倒計時動畫
+   因為每回合跑的時間只會在後端跑而不會顯示在螢幕上 , 所以前端要有一個動畫來告知玩家時間
+   endTimeIso 也就是傳進來的參數會是 room.RoundEndTime ( 每回合預定結束時間 )
+*/
 const startTimer = (endTimeIso) => {
-  console.log('🕐 收到的 roundEndTime:', endTimeIso, '目前時間:', new Date().toISOString())
+  // clearInterval Js 自帶 , 在每一輪開始前清除上回合的倒計時
   clearInterval(timerInterval)
+  // 傳進來的時間字串轉日期格式
   const endTime = new Date(endTimeIso).getTime()
 
+  // setInterval 一樣是 Js 自帶 , 設定每幾秒執行一次 , 直到 clearInterval
   timerInterval = setInterval(() => {
+    // remaining 是剩餘時間
     const remaining = Math.max(0, Math.round((endTime - Date.now()) / 1000))
     timeLeft.value = remaining
+    // 到時間就清空
     if (remaining <= 0) clearInterval(timerInterval)
   }, 1000)
 }
@@ -86,6 +96,7 @@ onMounted(async () => {
   await startConnection()
   const conn = getConnection()
 
+  // 如果斷線重連的話就再次呼叫
   registerReconnectHandler(async () => {
     await conn.invoke('JoinRoom', roomInfo.value.roomId)
     await conn.invoke('AddToUserGroup', authStore.userId)
@@ -97,12 +108,12 @@ onMounted(async () => {
   })
 
   // 收到猜測的訊息並推到留言板上
-  conn.on('ReceiveGuess', (data) => {
+  conn.on('GuessInCorrect', (data) => {
     messages.value.push({ playerName: data.playerName, content: data.content, isCorrect: false })
   })
 
   // 猜對
-  conn.on('CorrectGuess', (data) => {
+  conn.on('GuessCorrect', (data) => {
     messages.value.push({
       playerName: data.playerName,
       content: `${data.playerName} 猜對了！`,
@@ -146,8 +157,8 @@ onMounted(async () => {
   })
 
   // 遊戲結束
-  conn.on('GameEnd', (data) => {
-    router.push({ name: 'result', params: { code: roomCode }, state: { rankings: data.rankings } })
+  conn.on('GameEnd', () => {
+    router.push({ name: 'room', params: { code: roomCode.toUpperCase() } })
   })
 
   // Error
@@ -175,8 +186,9 @@ onMounted(async () => {
     return
   }
 
+  // 先把前面的監聽 ( conn.on ) 全都設定好 , 再呼叫 Hub 方法 ( conn.invoke )
+  // conn.on(...) 是裝監聽器 , 不會主動做任何事 , 只是被動等著接訊息 => conn.invoke(...) 才是真正觸發後端動作
   await conn.invoke('JoinRoom', roomInfo.value.roomId)
-
   await conn.invoke('AddToUserGroup', authStore.userId)
 })
 
@@ -259,7 +271,10 @@ const sendGuess = async () => {
   guessInput.value = ''
 }
 
-const leaveGame = async () => {
+/*
+   離開房間
+*/
+const leaveRoom = async () => {
   const conn = getConnection()
   if (conn && roomInfo.value) {
     await conn.invoke('LeaveRoom', roomInfo.value.roomId)
@@ -267,10 +282,13 @@ const leaveGame = async () => {
   router.push({ name: 'loginView' })
 }
 
+/*
+   結束遊戲 ( 房主才能 )
+*/
 const endGame = async () => {
   const conn = getConnection()
   if (conn && roomInfo.value) {
-    await conn.invoke('GameEnd', roomInfo.value.roomId)
+    await conn.invoke('EndGame', roomInfo.value.roomId)
   }
 }
 </script>
@@ -301,7 +319,7 @@ const endGame = async () => {
           結束遊戲
         </button>
         <button
-          @click="leaveGame"
+          @click="leaveRoom"
           class="px-3 py-1.5 bg-white/20 text-white font-extrabold text-xs rounded-lg border-b-2 border-white/30 hover:bg-white/30 cursor-pointer"
         >
           離開房間
@@ -342,7 +360,7 @@ const endGame = async () => {
         <!--#region 猜題區 -->
         <div class="bg-white rounded-2xl p-4 flex flex-col flex-1 min-h-0">
           <p class="text-xs font-extrabold text-slate-400 tracking-widest mb-3">💬 猜題區</p>
-          <div class="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 max-h-0">
+          <div class="flex-1 overflow-y-auto flex flex-col gap-2 mb-3">
             <div
               v-for="(msg, i) in messages"
               :key="i"
