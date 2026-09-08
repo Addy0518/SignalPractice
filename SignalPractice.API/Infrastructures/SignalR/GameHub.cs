@@ -171,6 +171,12 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                     return;
                 }
 
+                // 先把上一場的分數清掉 , 目前沒有歷史紀錄查詢 , 暫時用這種方法
+                foreach (var p in room.RoomPlayers)
+                {
+                    p.Score = 0;
+                }
+
                 // Random.Shared 是 .Net 內建共用實例 , 用來產生隨機變數的 , 比 new Random() 更好用
                 // 把在線玩家隨機排序，並且指定畫畫順序
                 var AllPlayers = onlinePlayers.OrderBy(_ => Random.Shared.Next()).ToList();
@@ -394,8 +400,22 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
 
             if (isCorrect)
             {
-                // 猜對 + 10 分 ( 暫時 )
-                int score = 10;
+                const int minScore = 10;
+                const int maxScore = 100;
+
+                // 計算玩家這回合答對時的剩餘時間
+                // Math.Max 取最大值 , 避免時間計算完是負數 , 造成分數計算錯誤 ( 如果是負數就比 0 小 , 就取最大值 0 )
+                var remainingSeconds = Math.Max(0, (room.RoundEndTime.Value - DateTime.UtcNow).TotalSeconds);
+
+                // ( 這輪的剩餘時間 / 這輪的總時間 ) = 這個玩家答對的速度比例
+                // 這個比例越大就代表玩家答對的越快 , 分數就會越高 ( 假設他在剩 45 秒時答出來 , 就是 45/60 = 0.75 ) , 以此類推
+                // Math.Min 一樣是保險機制 , 確保不會超過 1 ( 1 就最快了 )
+                var remainingRatio = Math.Min(1, remainingSeconds / room.RoundSeconds);
+
+                // 計算分數 = 最低分 + ( 最高分 - 最低分 ) * 剩餘時間比例
+                // 假設他一開始就答對 , remainingRatio = 1 , score 就等於 10 + (100 - 10) * 1 = 100 ( 滿分 )
+                int score = (int)Math.Round(minScore + (maxScore - minScore) * remainingRatio);
+
                 player.Score += score;
 
                 await context.SaveChangesAsync();

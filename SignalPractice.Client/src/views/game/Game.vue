@@ -121,7 +121,17 @@ onMounted(async () => {
     })
     // 更新分數
     const player = players.value.find((p) => p.playerId === data.playerId)
-    if (player) player.score = data.totalScore
+    if (player) {
+      player.score = data.totalScore
+
+      // 顯示這次的加分 , 時間一到消失
+      player.lastGain = data.score
+      clearTimeout(player._gainTimer)
+      // 自訂一個屬性 ( _gainTimer ) , 而不是直接用 player.value , 這樣不共用一個變數避免計時器互清
+      player._gainTimer = setTimeout(() => {
+        player.lastGain = null
+      }, 2000)
+    }
   })
 
   // 下一輪開始
@@ -352,6 +362,12 @@ const endGame = async () => {
                 >✏️</span
               >
               <span class="text-xs font-extrabold text-indigo-400">{{ player.score }}</span>
+              <span
+                v-if="player.lastGain"
+                class="text-xs font-extrabold text-emerald-500 animate-bounce"
+              >
+                +{{ player.lastGain }}
+              </span>
             </div>
           </div>
         </div>
