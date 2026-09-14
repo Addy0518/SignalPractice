@@ -1,10 +1,12 @@
 <script setup>
 import { getRoomInfoAPI } from '@/api/roomService'
+import { useGameResultStore } from '@/stores/gameResult'
+import { getAvatarEmoji } from '@/common/avatar'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-
+const gameResultStore = useGameResultStore()
 const showToastSuccess = inject('showToastSuccess')
 const showToastError = inject('showToastError')
 
@@ -14,6 +16,10 @@ const players = ref([])
 const messages = ref([])
 const guessInput = ref('')
 const myTopic = ref('')
+const showRoundEnd = ref(false)
+const roundEndData = ref(null)
+let roundEndTimer = null
+let pendingNextEvent = null
 const currentDrawerId = ref(null)
 const currentRound = ref(0)
 const totalRound = ref(0)
@@ -134,18 +140,8 @@ onMounted(async () => {
     }
   })
 
-  // 下一輪開始
-  conn.on('GameStarted', (data) => {
-    currentDrawerId.value = data.drawerId
-    currentRound.value = data.currentRound
-    timeLeft.value = data.roundSeconds
-    messages.value = []
-    startTimer(data.roundEndTime)
-  })
-
   // 收到畫線的資料並推到畫布上
   conn.on('ReceiveDraw', (data) => {
-    console.log('是否有收到畫線', data)
     lines.value.push({
       points: data.points,
       stroke: data.color,
@@ -160,15 +156,50 @@ onMounted(async () => {
 
   // 這輪結束
   conn.on('RoundEnd', (data) => {
-    showToastSuccess(`這輪結束！答案是：${data.word}`)
+    // 停止畫面上的倒數計時
+    clearInterval(timerInterval)
     lines.value = []
     myTopic.value = ''
-    clearInterval(timerInterval)
+
+    // 存下這回合結束時的資訊
+    roundEndData.value = data
+    // 顯示彈窗
+    showRoundEnd.value = true
+
+    // 防止上一輪殘留的計時器還在跑 ( 保險 )
+    clearTimeout(roundEndTimer)
+
+    // 計時器 , 設定為五秒關閉彈窗
+    roundEndTimer = setTimeout(() => {
+      showRoundEnd.value = false
+      // pendingNextEvent 這裡存的是類型 ( GameStarted / GameEnd ) 跟比賽資訊 ( data )
+      if (pendingNextEvent) {
+        const evt = pendingNextEvent
+        // 存完清空 , 避免重複用
+        pendingNextEvent = null
+        // 看接下來是要下一輪遊戲還是結束遊戲
+        if (evt.type === 'GameStarted') applyGameStarted(evt.data)
+        else if (evt.type === 'GameEnd') applyGameEnd(evt.data)
+      }
+    }, 5000)
+  })
+
+  // 下一輪開始
+  conn.on('GameStarted', (data) => {
+    if (showRoundEnd.value) {
+      pendingNextEvent = { type: 'GameStarted', data }
+    } else {
+      applyGameStarted(data)
+    }
   })
 
   // 遊戲結束
-  conn.on('GameEnd', () => {
-    router.push({ name: 'room', params: { code: roomCode.toUpperCase() } })
+  conn.on('GameEnd', (data) => {
+    if (showRoundEnd.value) {
+      pendingNextEvent = { type: 'GameEnd', data: data }
+    } else {
+      applyGameEnd(data)
+    }
   })
 
   // Error
@@ -207,8 +238,30 @@ onMounted(async () => {
 */
 onUnmounted(() => {
   clearInterval(timerInterval)
+  clearTimeout(roundEndTimer)
   stopConnection()
 })
+
+/*
+   下一輪遊戲開始
+*/
+const applyGameStarted = (data) => {
+  currentDrawerId.value = data.drawerId
+  currentRound.value = data.currentRound
+  timeLeft.value = data.roundSeconds
+  messages.value = []
+  startTimer(data.roundEndTime)
+}
+
+// 遊戲結束
+const applyGameEnd = (data) => {
+  // 把分數 , 排名等資料存進 pinia , 再去 result 頁面秀分數
+  gameResultStore.setRankings(data?.rankings || [])
+  router.push({
+    name: 'result',
+    params: { code: roomCode },
+  })
+}
 
 /*
   滑鼠按下時觸發
@@ -308,6 +361,35 @@ const endGame = async () => {
     class="min-h-screen p-4 flex flex-col"
     style="background: linear-gradient(160deg, #74b9ff 0%, #a29bfe 100%)"
   >
+    <!--#region 這輪結束彈窗 -->
+    <div
+      v-if="showRoundEnd"
+      class="fixed inset-0 bg-black/45 flex items-center justify-center z-50"
+    >
+      <div class="bg-white rounded-2xl p-9 w-150 text-center">
+        <p class="text-xs font-extrabold text-slate-400 tracking-widest mb-2">這輪結束</p>
+        <p class="text-sm text-slate-500 mb-1">答案是</p>
+        <p class="text-2xl font-black text-indigo-500 mb-5">{{ roundEndData?.word }}</p>
+        <div class="flex flex-col gap-2 text-left mb-5">
+          <div
+            v-for="s in [...(roundEndData?.scores || [])].sort((a, b) => b.score - a.score)"
+            :key="s.playerId"
+            class="flex items-center gap-2.5 bg-slate-50 rounded-xl px-3 py-2.5"
+          >
+            <div
+              class="w-7 h-7 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-sm shrink-0"
+            >
+              😊
+            </div>
+            <span class="flex-1 text-xs font-extrabold text-slate-700">{{ s.playerName }}</span>
+            <span class="text-xs font-extrabold text-indigo-400">{{ s.score }} 分</span>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400">下一輪即將開始…</p>
+      </div>
+    </div>
+    <!-- #endregion -->
+
     <!--#region 標題 , 一局的時間 , 第幾輪 -->
     <div class="flex items-center justify-between mb-3">
       <div class="text-white font-black text-xl" style="text-shadow: 0 2px 0 rgba(0, 0, 0, 0.15)">
@@ -353,7 +435,7 @@ const endGame = async () => {
               <div
                 class="w-7 h-7 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-sm shrink-0"
               >
-                😊
+                {{ getAvatarEmoji(player.playerId) }}
               </div>
               <span class="flex-1 text-xs font-extrabold text-slate-700 truncate">{{
                 player.playerName

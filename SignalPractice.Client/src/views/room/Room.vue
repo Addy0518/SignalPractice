@@ -1,6 +1,6 @@
 <script setup>
 import { getRoomInfoAPI } from '@/api/roomService'
-
+import { getAvatarEmoji } from '@/common/avatar'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -57,7 +57,7 @@ onMounted(async () => {
     conn.on('GameStarted', () => {
       router.push({ name: 'game', params: { code: roomCode } })
     })
-    
+
     await conn.invoke('JoinRoom', roomInfo.value.roomId)
   } catch (err) {
     console.error(err)
@@ -149,7 +149,9 @@ const leaveRoom = async () => {
         >
           <div
             class="w-8 h-8 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-base shrink-0"
-          ></div>
+          >
+            {{ getAvatarEmoji(player.playerId) }}
+          </div>
           <span class="flex-1 text-sm font-extrabold text-slate-700">{{ player.playerName }}</span>
           <span
             v-if="player.playerId === roomInfo?.roomOwnerId"

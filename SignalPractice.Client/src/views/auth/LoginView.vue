@@ -1,7 +1,7 @@
 <script setup>
 import { loginAPI, guestLoginAPI } from '@/api/userService'
 import { joinRoomAPI } from '@/api/roomService'
-
+import { getAvatarEmoji } from '@/common/avatar'
 const router = useRouter()
 const authStore = useAuthStore()
 const account = ref('')
@@ -84,6 +84,14 @@ const userLogin = async () => {
 }
 
 /*
+   登出
+*/
+const handleLogout = () => {
+  authStore.clearAuth()
+  showToastSuccess('已登出')
+}
+
+/*
     建立房間
 */
 const createRoom = () => {
@@ -121,6 +129,22 @@ const joinOneRoom = async () => {
     class="min-h-screen flex flex-col items-center justify-center"
     style="background: linear-gradient(160deg, #74b9ff 0%, #a29bfe 100%)"
   >
+    <!--#region 登入狀態列 -->
+    <div
+      v-if="authStore.token"
+      class="absolute top-4 right-4 bg-white/20 rounded-full pl-4 pr-1.5 py-1.5 flex items-center gap-3"
+    >
+      <span class="text-white font-extrabold text-sm">
+        {{ getAvatarEmoji(authStore.userId) }} {{ authStore.userName }}
+      </span>
+      <button
+        @click="handleLogout"
+        class="px-3.5 py-1.5 bg-white text-indigo-500 font-extrabold text-xs rounded-full cursor-pointer hover:opacity-90"
+      >
+        登出
+      </button>
+    </div>
+    <!-- #endregion -->
     <!--#region 標題 -->
     <h1
       class="text-6xl font-black text-white mb-1"

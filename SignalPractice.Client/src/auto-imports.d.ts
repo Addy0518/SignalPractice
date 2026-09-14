@@ -11,6 +11,7 @@ declare global {
   const EffectScope: typeof import('vue').EffectScope
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const accountInstance: typeof import('./api/accountInstance.js').default
+  const actions: typeof import('./stores/gameResult.js').actions
   const codeStatusEnum: typeof import('./common/enum.js').codeStatusEnum
   const computed: typeof import('vue').computed
   const couponTypeEnum: typeof import('./common/enum.js').couponTypeEnum
@@ -32,6 +33,7 @@ declare global {
   const formatUTC8Date: typeof import('./common/formats.js').formatUTC8Date
   const genderEnum: typeof import('./common/enum.js').genderEnum
   const getActivePinia: typeof import('pinia').getActivePinia
+  const getAvatarEmoji: typeof import('./common/avatar.js').getAvatarEmoji
   const getConnection: typeof import('./common/signalrConnection.js').getConnection
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
@@ -113,6 +115,7 @@ declare global {
   const useChatUserStore: typeof import('./stores/chatUser.js').useChatUserStore
   const useCssModule: typeof import('vue').useCssModule
   const useCssVars: typeof import('vue').useCssVars
+  const useGameResultStore: typeof import('./stores/gameResult.js').useGameResultStore
   const useId: typeof import('vue').useId
   const useLink: typeof import('vue-router').useLink
   const useModel: typeof import('vue').useModel
@@ -121,6 +124,7 @@ declare global {
   const useSlots: typeof import('vue').useSlots
   const useTemplateRef: typeof import('vue').useTemplateRef
   const useVuelidate: typeof import('@vuelidate/core').useVuelidate
+  const usegameResultStore: typeof import('./stores/gameResult.js').usegameResultStore
   const vaildCellPhone: typeof import('./validator/validators.js').vaildCellPhone
   const vaildEmail: typeof import('./validator/validators.js').vaildEmail
   const vaildLoginPassword: typeof import('./validator/validators.js').vaildLoginPassword
@@ -147,6 +151,7 @@ declare module 'vue' {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly acceptHMRUpdate: UnwrapRef<typeof import('pinia')['acceptHMRUpdate']>
     readonly accountInstance: UnwrapRef<typeof import('./api/accountInstance.js')['default']>
+    readonly actions: UnwrapRef<typeof import('./stores/gameResult.js')['actions']>
     readonly codeStatusEnum: UnwrapRef<typeof import('./common/enum.js')['codeStatusEnum']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly couponTypeEnum: UnwrapRef<typeof import('./common/enum.js')['couponTypeEnum']>
@@ -168,6 +173,7 @@ declare module 'vue' {
     readonly formatUTC8Date: UnwrapRef<typeof import('./common/formats.js')['formatUTC8Date']>
     readonly genderEnum: UnwrapRef<typeof import('./common/enum.js')['genderEnum']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
+    readonly getAvatarEmoji: UnwrapRef<typeof import('./common/avatar.js')['getAvatarEmoji']>
     readonly getConnection: UnwrapRef<typeof import('./common/signalrConnection.js')['getConnection']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
@@ -249,6 +255,7 @@ declare module 'vue' {
     readonly useChatUserStore: UnwrapRef<typeof import('./stores/chatUser.js')['useChatUserStore']>
     readonly useCssModule: UnwrapRef<typeof import('vue')['useCssModule']>
     readonly useCssVars: UnwrapRef<typeof import('vue')['useCssVars']>
+    readonly useGameResultStore: UnwrapRef<typeof import('./stores/gameResult.js')['useGameResultStore']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useLink: UnwrapRef<typeof import('vue-router')['useLink']>
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>

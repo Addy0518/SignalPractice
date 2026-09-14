@@ -586,6 +586,9 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                         }
                     );
 
+                // 因為前端每輪會有五秒的分數報告時間 , 所以後端這裡也要延遲五秒
+                await Task.Delay(TimeSpan.FromSeconds(5));
+
                 // 判斷是否還有下一輪
                 if (room.CurrentRound >= room.TotalRound)
                 {
