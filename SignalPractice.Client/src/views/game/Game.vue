@@ -3,6 +3,43 @@ import { getRoomInfoAPI } from '@/api/roomService'
 import { useGameResultStore } from '@/stores/gameResult'
 import { getAvatarEmoji } from '@/common/avatar'
 
+// ============================================================
+// 前端流程 ( 跟後端 Hub 流程對應 )
+//
+// 1. onMouted 初始化建立連線 ( startConnection )
+//    => 把所有 conn.on 監聽器註冊好
+//    => 拿到房間資料
+//    => 呼叫後端 Hub 方法加入 Signal 群組
+//
+// 2. DrawerChoosing
+//    => 廣播告訴房間裡所有人誰在選字
+//    => 如果有人上一輪的回合結束彈窗還沒關閉的話 , 暫存資料到 pendingNextEvent
+//
+// 3. YourChoosingTopic
+//    => 廣播給畫家選題目
+//    => 開始這回合的選題目計時 , 沒有就自動選題目
+//
+// 4. 畫家選擇題目後
+//    => chooseWord 拿到題目結果
+//
+// 5. GameStarted
+//    => 遊戲開始
+//    => 跟第 2 步一樣 , 彈窗還沒關閉的話 , 暫存資料到 pendingNextEvent
+//
+// 6. 畫圖階段（ SendDraw / ReceiveDraw / ClearDraw )
+//    => isDrawer 判斷是不是畫家 , 畫的線即時廣播給其他人
+//
+// 7. 猜題（ sendGuess → GuessCorrect / GuessInCorrect ）
+//    => 猜對：更新分數、顯示短暫的加分動畫
+//    => 猜錯：推進留言區
+//
+// 8. RoundEnd ( 這回合結束 )
+//    => 顯示結束彈窗 , 開著期間收到的 DrawerChoosing / GameStarted / GameEnd 都會先暫存到 pendingNextEvent，等彈窗關閉那一刻才套用
+//
+// 9. GameEnd ( 遊戲結束 )
+//    => 把排名資訊存 Pinia 並導到 Result.vue
+// ============================================================
+
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -18,14 +55,20 @@ const guessInput = ref('')
 const myTopic = ref('')
 const showRoundEnd = ref(false)
 const roundEndData = ref(null)
-let roundEndTimer = null
-let pendingNextEvent = null
 const currentDrawerId = ref(null)
 const currentRound = ref(0)
 const totalRound = ref(0)
 const timeLeft = ref(0)
+let timerInterval = null
 const showTools = ref(false)
+let roundEndTimer = null
+let pendingNextEvent = null
 
+const showChoosing = ref(false)
+const wordChoices = ref([])
+const choosingDrawerName = ref('')
+const chooseTimeLeft = ref(10)
+let chooseTimerInterval = null
 /*
   畫布相關
 */
@@ -36,7 +79,6 @@ const selectedColor = ref('#1e1e1e')
 const selectedSize = ref(3)
 const stageConfig = ref({ width: 0, height: 0 })
 const canvasWrapRef = ref(null)
-let timerInterval = null
 const colors = [
   '#1e1e1e',
   '#ef4444',
@@ -85,6 +127,19 @@ const startTimer = (endTimeIso) => {
 }
 
 /*
+   前端選題目倒計時動畫
+*/
+const startChooseTimer = () => {
+  clearInterval(chooseTimerInterval)
+  chooseTimeLeft.value = 10
+  // setInterval 一樣是 Js 自帶 , 設定每幾秒執行一次 , 直到 clearInterval
+  chooseTimerInterval = setInterval(() => {
+    chooseTimeLeft.value = Math.max(0, chooseTimeLeft.value - 1)
+    if (chooseTimeLeft.value <= 0) clearInterval(chooseTimerInterval)
+  }, 1000)
+}
+
+/*
   初始化
 */
 onMounted(async () => {
@@ -111,6 +166,22 @@ onMounted(async () => {
   // 題目（只有畫畫的人收到）
   conn.on('YourTopic', (data) => {
     myTopic.value = data.word
+  })
+
+  // 等待選擇的題目（一樣只有畫畫的人收到）
+  conn.on('YourChoosingTopic', (data) => {
+    wordChoices.value = data
+    // 開始到計時選題目的時間
+    startChooseTimer()
+  })
+
+  // 畫家選題目
+  conn.on('DrawerChoosing', (data) => {
+    if (showRoundEnd.value) {
+      pendingNextEvent = { type: 'DrawerChoosing', data }
+    } else {
+      applyDrawerChoosing(data)
+    }
   })
 
   // 收到猜測的訊息並推到留言板上
@@ -177,8 +248,8 @@ onMounted(async () => {
         const evt = pendingNextEvent
         // 存完清空 , 避免重複用
         pendingNextEvent = null
-        // 看接下來是要下一輪遊戲還是結束遊戲
-        if (evt.type === 'GameStarted') applyGameStarted(evt.data)
+        // 看接下來是要換畫家選題目並下一回合還是結束遊戲
+        if (evt.type === 'DrawerChoosing') applyDrawerChoosing(evt.data)
         else if (evt.type === 'GameEnd') applyGameEnd(evt.data)
       }
     }, 5000)
@@ -239,6 +310,7 @@ onMounted(async () => {
 onUnmounted(() => {
   clearInterval(timerInterval)
   clearTimeout(roundEndTimer)
+  clearInterval(chooseTimerInterval)
   stopConnection()
 })
 
@@ -246,6 +318,12 @@ onUnmounted(() => {
    下一輪遊戲開始
 */
 const applyGameStarted = (data) => {
+  // 題目選好就關掉畫面跟清空舊題目
+  showChoosing.value = false
+  wordChoices.value = []
+  clearInterval(chooseTimerInterval)
+
+  // 載入這回合的資料
   currentDrawerId.value = data.drawerId
   currentRound.value = data.currentRound
   timeLeft.value = data.roundSeconds
@@ -253,7 +331,20 @@ const applyGameStarted = (data) => {
   startTimer(data.roundEndTime)
 }
 
-// 遊戲結束
+/*
+   畫家選題目中的畫面
+*/
+const applyDrawerChoosing = (data) => {
+  currentDrawerId.value = data.drawerId
+  currentRound.value = data.currentRound
+  totalRound.value = data.totalRound
+  choosingDrawerName.value = data.drawerName
+  showChoosing.value = true
+}
+
+/*
+   遊戲結束
+*/
 const applyGameEnd = (data) => {
   // 把分數 , 排名等資料存進 pinia , 再去 result 頁面秀分數
   gameResultStore.setRankings(data?.rankings || [])
@@ -316,7 +407,7 @@ const handleMouseUp = async () => {
 }
 
 /*
-  清除畫布
+   清除畫布
 */
 const clearCanvas = async () => {
   lines.value = []
@@ -325,13 +416,23 @@ const clearCanvas = async () => {
 }
 
 /*
-  送出猜測
+   送出猜測
 */
 const sendGuess = async () => {
   if (!guessInput.value.trim()) return
   const conn = getConnection()
   if (conn) await conn.invoke('SendGuess', roomInfo.value.roomId, guessInput.value)
   guessInput.value = ''
+}
+
+/*
+   選擇題目
+*/
+const chooseWord = async (wordBankId) => {
+  const conn = getConnection()
+  if (conn) await conn.invoke('ChooseWord', roomInfo.value.roomId, wordBankId)
+  wordChoices.value = []
+  clearInterval(chooseTimerInterval)
 }
 
 /*
@@ -389,7 +490,34 @@ const endGame = async () => {
       </div>
     </div>
     <!-- #endregion -->
+    <!--#region 選字階段 -->
+    <div
+      v-if="showChoosing"
+      class="fixed inset-0 bg-black/45 flex items-center justify-center z-50"
+    >
+      <!-- 畫家：候選題目 -->
+      <div v-if="isDrawer && wordChoices.length" class="bg-white rounded-2xl p-9 w-150 text-center">
+        <p class="text-xs font-extrabold text-slate-400 tracking-widest mb-2">輪到你畫畫了</p>
+        <p class="text-sm text-slate-500 mb-5">選一個題目吧（{{ chooseTimeLeft }} 秒）</p>
+        <div class="flex flex-col gap-2.5">
+          <button
+            v-for="w in wordChoices"
+            :key="w.workBankId"
+            @click="chooseWord(w.workBankId)"
+            class="py-3.5 rounded-xl border-2 border-slate-200 bg-slate-50 font-extrabold text-base text-slate-700 hover:bg-indigo-50 hover:border-indigo-300 cursor-pointer transition-colors"
+          >
+            {{ w.word }}
+          </button>
+        </div>
+      </div>
 
+      <!-- 其他人：等待畫家選字 -->
+      <div v-else class="bg-white rounded-2xl p-9 w-96 text-center">
+        <p class="text-xs font-extrabold text-slate-400 tracking-widest mb-2">請稍候</p>
+        <p class="text-lg font-black text-indigo-500">{{ choosingDrawerName }} 正在選題目…</p>
+      </div>
+    </div>
+    <!-- #endregion -->
     <!--#region 標題 , 一局的時間 , 第幾輪 -->
     <div class="flex items-center justify-between mb-3">
       <div class="text-white font-black text-xl" style="text-shadow: 0 2px 0 rgba(0, 0, 0, 0.15)">

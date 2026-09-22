@@ -54,7 +54,7 @@ onMounted(async () => {
     })
 
     // 監聽遊戲開始 → 跳到遊戲頁面
-    conn.on('GameStarted', () => {
+    conn.on('DrawerChoosing', () => {
       router.push({ name: 'game', params: { code: roomCode } })
     })
 
