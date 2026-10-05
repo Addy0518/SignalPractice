@@ -7,6 +7,9 @@ namespace SignalPractice.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse<Dictionary<string, string[]>>))]
     public class UserController(IUserService userService) : ControllerBase
     {
+        // 私有方法 : 從 Token 取出 UserId
+        private int CurrentUserId => int.Parse(User.FindFirst("UserId")?.Value ?? "0");
+
         /// <summary>
         /// 使用者註冊
         /// </summary>
@@ -45,6 +48,31 @@ namespace SignalPractice.API.Controllers
         public async Task<IActionResult> GuestLogin()
         {
             var result = (await userService.GuestLogin());
+            return result.ToActionResult();
+        }
+
+        /// <summary>
+        /// 查看個人歷史紀錄
+        /// </summary>
+        /// <returns>房間資訊</returns>
+        [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<UserResponse>))]
+        public async Task<IActionResult> GetGameRecordInfo()
+        {
+            var result = (await userService.GetGameRecordInfo(CurrentUserId));
+            return result.ToActionResult();
+        }
+
+        /// <summary>
+        /// 查看歷史紀錄的詳細資訊
+        /// </summary>
+        /// <param name="gameRecordId">遊戲紀錄 ID</param>
+        /// <returns>詳細資訊</returns>
+        [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<UserResponse>))]
+        public async Task<IActionResult> GetRecordDetailsInfo([FromQuery] int gameRecordId)
+        {
+            var result = (await userService.GetRecordDetailsInfo(gameRecordId, CurrentUserId));
             return result.ToActionResult();
         }
     }

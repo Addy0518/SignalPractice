@@ -35,12 +35,18 @@ onMounted(async () => {
     const infoRes = await getRoomInfoAPI(roomCode)
     if (infoRes.data.codeStatus === 2000) {
       roomInfo.value = infoRes.data.returnData
-      players.value = infoRes.data.returnData.players
+      players.value = infoRes.data.returnData.players.filter((x) => x.isOnline == 1)
     }
 
     // 建立 SignalR 連線
     await startConnection()
     const conn = getConnection()
+
+    // 監聽房主退出自動換人
+    conn.on('HostChanged', (data) => {
+      if (roomInfo.value) roomInfo.value.roomOwnerId = data.ownerId
+      showToastSuccess(`${data.ownerName} 成為新房主`)
+    })
 
     // 監聽有人加入
     conn.on('PlayerJoined', (player) => {
@@ -61,6 +67,7 @@ onMounted(async () => {
     await conn.invoke('JoinRoom', roomInfo.value.roomId)
   } catch (err) {
     console.error(err)
+    router.push({ name: 'loginView' })
   } finally {
     hideLoading()
   }
@@ -152,7 +159,10 @@ const leaveRoom = async () => {
           >
             {{ getAvatarEmoji(player.playerId) }}
           </div>
-          <span class="flex-1 text-sm font-extrabold text-slate-700">{{ player.playerName }}</span>
+          <span class="flex-1 text-sm font-extrabold text-slate-700">
+            <span v-if="player.playerId === roomInfo?.roomOwnerId" title="房主">👑</span>
+            {{ player.playerName }}
+          </span>
           <span
             v-if="player.playerId === roomInfo?.roomOwnerId"
             class="text-xs font-extrabold text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full"

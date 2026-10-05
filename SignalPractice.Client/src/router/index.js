@@ -37,6 +37,18 @@ const router = createRouter({
       meta: { requiresAuth: true },
       component: () => import('@/views/game/Result.vue'),
     },
+    {
+      path: '/records',
+      name: 'records',
+      meta: { requiresAuth: true },
+      component: () => import('@/views/record/RecordList.vue'),
+    },
+    {
+      path: '/records/:id',
+      name: 'recordDetail',
+      meta: { requiresAuth: true },
+      component: () => import('@/views/record/RecordDetail.vue'),
+    },
   ],
 })
 

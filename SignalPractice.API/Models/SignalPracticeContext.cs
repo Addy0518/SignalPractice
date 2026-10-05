@@ -15,6 +15,10 @@ public partial class SignalPracticeContext : DbContext
 
     public virtual DbSet<Category> Categories { get; set; }
 
+    public virtual DbSet<GameRecord> GameRecords { get; set; }
+
+    public virtual DbSet<GameRecordPlayer> GameRecordPlayers { get; set; }
+
     public virtual DbSet<GuessMessage> GuessMessages { get; set; }
 
     public virtual DbSet<Log> Logs { get; set; }
@@ -36,6 +40,39 @@ public partial class SignalPracticeContext : DbContext
             entity.Property(e => e.CategoryName)
                 .IsRequired()
                 .HasMaxLength(300);
+        });
+
+        modelBuilder.Entity<GameRecord>(entity =>
+        {
+            entity.HasKey(e => e.GameRecordId).HasName("PK__GameReco__D53273FBF9C904E8");
+
+            entity.ToTable("GameRecord");
+
+            entity.Property(e => e.CreateTime).HasColumnType("datetime");
+            entity.Property(e => e.RoomName)
+                .IsRequired()
+                .HasMaxLength(300);
+
+            entity.HasOne(d => d.Room).WithMany(p => p.GameRecords)
+                .HasForeignKey(d => d.RoomId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_GameRecord_Room");
+        });
+
+        modelBuilder.Entity<GameRecordPlayer>(entity =>
+        {
+            entity.HasKey(e => e.GameRecordPlayerId).HasName("PK__GameReco__71BC3166BABD6667");
+
+            entity.ToTable("GameRecordPlayer");
+
+            entity.Property(e => e.PlayerName)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.HasOne(d => d.GameRecord).WithMany(p => p.GameRecordPlayers)
+                .HasForeignKey(d => d.GameRecordId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_GameRecordPlayer_GameRecord");
         });
 
         modelBuilder.Entity<GuessMessage>(entity =>

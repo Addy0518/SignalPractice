@@ -143,6 +143,12 @@ const joinOneRoom = async () => {
       >
         登出
       </button>
+      <button
+        @click="router.push({ name: 'records' })"
+        class="px-3.5 py-1.5 bg-white/30 text-white font-extrabold text-xs rounded-full cursor-pointer hover:bg-white/40"
+      >
+        歷史紀錄
+      </button>
     </div>
     <!-- #endregion -->
     <!--#region 標題 -->
@@ -232,20 +238,6 @@ const joinOneRoom = async () => {
 
         <!--#region 帳號跟密碼欄位 -->
         <div v-if="showAccountLogin" class="mt-4 flex flex-col gap-2.5">
-          <!--#region 測試帳號 -->
-          <button
-            class="flex-1 py-3 rounded-xl border-2 border-slate-200 bg-slate-50 font-extrabold text-sm text-slate-600 hover:bg-slate-100 cursor-pointer flex items-center justify-center gap-2 transition-colors"
-            @click="testUser"
-          >
-            測試帳號 1
-          </button>
-          <button
-            class="flex-1 py-3 rounded-xl border-2 border-slate-200 bg-slate-50 font-extrabold text-sm text-slate-600 hover:bg-slate-100 cursor-pointer flex items-center justify-center gap-2 transition-colors"
-            @click="testUser2"
-          >
-            測試帳號 2
-          </button>
-          <!-- #endregion -->
           <!--#region 帳號 -->
           <div>
             <label class="block text-xs font-extrabold text-slate-400 tracking-widest mb-2"

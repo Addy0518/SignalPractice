@@ -31,5 +31,7 @@ public partial class Room
 
     public DateTime CreateTime { get; set; }
 
+    public virtual ICollection<GameRecord> GameRecords { get; set; } = new List<GameRecord>();
+
     public virtual ICollection<RoomPlayer> RoomPlayers { get; set; } = new List<RoomPlayer>();
 }

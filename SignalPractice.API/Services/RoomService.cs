@@ -16,7 +16,7 @@ public class RoomService(
     {
         var room = await context.Rooms.Include(r => r.RoomPlayers).FirstOrDefaultAsync(r => r.RoomCode == roomCode);
 
-        if (room == null)
+        if (room == null || room.RoomStatus == RoomStatusEnum.已關閉)
         {
             var errors = new Dictionary<string, string[]> { { "RoomCode", new[] { "找不到房間！" } } };
             return ApiResponseHelper.RequestError<RoomResponse>(errors);
@@ -71,7 +71,9 @@ public class RoomService(
     public async Task<ApiResponse<string>> CreateRoom(RoomCreateRequest request, int userId, string userName)
     {
         // 檢查房間是否已存在
-        bool isExist = await context.Rooms.AnyAsync(r => r.RoomName == request.RoomName);
+        bool isExist = await context
+            .Rooms.Where(r => r.RoomStatus != RoomStatusEnum.已關閉)
+            .AnyAsync(r => r.RoomName == request.RoomName);
         if (isExist)
         {
             var errors = new Dictionary<string, string[]> { { "RoomName", new[] { "無法重複創建房間！" } } };
@@ -129,7 +131,7 @@ public class RoomService(
     {
         // 找到房間
         var room = await context.Rooms.FirstOrDefaultAsync(r => r.RoomCode == roomCode);
-        if (room == null)
+        if (room == null || room.RoomStatus == RoomStatusEnum.已關閉)
         {
             var errors = new Dictionary<string, string[]> { { "RoomCode", new[] { "找不到房間！" } } };
             return ApiResponseHelper.RequestError<bool>(errors);

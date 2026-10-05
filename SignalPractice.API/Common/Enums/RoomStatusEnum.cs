@@ -13,4 +13,7 @@ public enum RoomStatusEnum
 
     [Description("已結束")]
     已結束 = 2,
+
+    [Description("已關閉")]
+    已關閉 = 3,
 }

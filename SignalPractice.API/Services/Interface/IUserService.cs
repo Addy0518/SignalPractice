@@ -22,4 +22,19 @@ public interface IUserService
     /// </summary>
     /// <returns>用戶資料</returns>
     Task<ApiResponse<UserResponse>> GuestLogin();
+
+    /// <summary>
+    /// 查看個人歷史紀錄
+    /// </summary>
+    /// <param name="userId">使用者 ID</param>
+    /// <returns>房間資訊</returns>
+    Task<ApiResponse<List<UserRecordResponse>>> GetGameRecordInfo(int userId);
+
+    /// <summary>
+    /// 查看歷史紀錄的詳細資訊
+    /// </summary>
+    /// <param name="gameRecordId">遊戲紀錄 ID</param>
+    /// <param name="userId">使用者 ID</param>
+    /// <returns>詳細資訊</returns>
+    Task<ApiResponse<RecordDetailsResponse>> GetRecordDetailsInfo(int gameRecordId, int userId);
 }

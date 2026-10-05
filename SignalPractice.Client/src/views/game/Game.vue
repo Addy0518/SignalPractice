@@ -40,45 +40,52 @@ import { getAvatarEmoji } from '@/common/avatar'
 //    => 把排名資訊存 Pinia 並導到 Result.vue
 // ============================================================
 
+/*
+   路由與外部狀態
+*/
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const gameResultStore = useGameResultStore()
-const showToastSuccess = inject('showToastSuccess')
-const showToastError = inject('showToastError')
-
 const roomCode = route.params.code
+
+/*
+   房間與玩家
+*/
 const roomInfo = ref()
 const players = ref([])
-const messages = ref([])
-const guessInput = ref('')
-const myTopic = ref('')
-const showRoundEnd = ref(false)
-const roundEndData = ref(null)
 const currentDrawerId = ref(null)
 const currentRound = ref(0)
 const totalRound = ref(0)
-const timeLeft = ref(0)
-let timerInterval = null
-const showTools = ref(false)
-let roundEndTimer = null
-let pendingNextEvent = null
+const isDrawer = computed(() => currentDrawerId.value === authStore.userId)
+const isHost = computed(() => roomInfo.value?.roomOwnerId === authStore.userId)
+/*
+  玩家排行（依分數排序）
+  用 [...players.value] 複製一份新陣列來避免動到本來的陣列 ( 常見的防禦性寫法 , 要動陣列的話都盡量這樣寫 )
+  sort 比對陣列裡的值 b - a 如果是正數 ( b 比 a 大 ) , b 就排在 a 前面 , 反之亦然
+*/
+const sortedPlayers = computed(() => [...players.value].sort((a, b) => b.score - a.score))
+const correctPlayersId = ref([])
+const hasGuessedCorrect = computed(() => correctPlayersId.value.includes(authStore.userId))
 
+/*
+   選題目
+*/
 const showChoosing = ref(false)
 const wordChoices = ref([])
 const choosingDrawerName = ref('')
 const chooseTimeLeft = ref(10)
 let chooseTimerInterval = null
+
 /*
-  畫布相關
+   畫圖
 */
+const myTopic = ref('')
 const lines = ref([])
-const isDrawing = ref(false)
 const currentLine = ref([])
+const isDrawing = ref(false)
+const showTools = ref(false)
 const selectedColor = ref('#1e1e1e')
-const selectedSize = ref(3)
-const stageConfig = ref({ width: 0, height: 0 })
-const canvasWrapRef = ref(null)
 const colors = [
   '#1e1e1e',
   '#ef4444',
@@ -89,21 +96,36 @@ const colors = [
   '#a855f7',
   '#ffffff',
 ]
+const selectedSize = ref(3)
 const sizes = [
   { label: '細', value: 2 },
   { label: '中', value: 5 },
   { label: '粗', value: 10 },
 ]
-const isDrawer = computed(() => currentDrawerId.value === authStore.userId)
-
-const isHost = computed(() => roomInfo.value?.roomOwnerId === authStore.userId)
+const stageConfig = ref({ width: 0, height: 0 })
+const canvasWrapRef = ref(null)
+const timeLeft = ref(0)
+let timerInterval = null
 
 /*
-  玩家排行（依分數排序）
-  用 [...players.value] 複製一份新陣列來避免動到本來的陣列 ( 常見的防禦性寫法 , 要動陣列的話都盡量這樣寫 )
-  sort 比對陣列裡的值 b - a 如果是正數 ( b 比 a 大 ) , b 就排在 a 前面 , 反之亦然
+   留言
 */
-const sortedPlayers = computed(() => [...players.value].sort((a, b) => b.score - a.score))
+const messages = ref([])
+const guessInput = ref('')
+
+/*
+   回合結束彈窗
+*/
+const showRoundEnd = ref(false)
+const roundEndData = ref(null)
+let roundEndTimer = null
+let pendingNextEvent = null
+
+/*
+   吐司
+*/
+const showToastSuccess = inject('showToastSuccess')
+const showToastError = inject('showToastError')
 
 /*
    前端倒計時動畫
@@ -140,7 +162,7 @@ const startChooseTimer = () => {
 }
 
 /*
-  初始化
+   初始化
 */
 onMounted(async () => {
   // canvasWrapRef : canva 畫布尺寸
@@ -161,6 +183,12 @@ onMounted(async () => {
   registerReconnectHandler(async () => {
     await conn.invoke('JoinRoom', roomInfo.value.roomId)
     await conn.invoke('AddToUserGroup', authStore.userId)
+  })
+
+  // 房主退出自動換人
+  conn.on('HostChanged', (data) => {
+    if (roomInfo.value) roomInfo.value.roomOwnerId = data.ownerId
+    showToastSuccess(`${data.ownerName} 成為新房主`)
   })
 
   // 題目（只有畫畫的人收到）
@@ -191,6 +219,12 @@ onMounted(async () => {
 
   // 猜對
   conn.on('GuessCorrect', (data) => {
+    if (!correctPlayersId.value.includes(data.playerId)) {
+      correctPlayersId.value.push(data.playerId)
+    }
+
+    if (data.playerId === authStore.userId) showToastSuccess(`答對了！+${data.score} 分`)
+
     messages.value.push({
       playerName: data.playerName,
       content: `${data.playerName} 猜對了！`,
@@ -251,6 +285,7 @@ onMounted(async () => {
         // 看接下來是要換畫家選題目並下一回合還是結束遊戲
         if (evt.type === 'DrawerChoosing') applyDrawerChoosing(evt.data)
         else if (evt.type === 'GameEnd') applyGameEnd(evt.data)
+        else if (evt.type === 'GameStarted') applyGameStarted(evt.data)
       }
     }, 5000)
   })
@@ -321,6 +356,7 @@ const applyGameStarted = (data) => {
   // 題目選好就關掉畫面跟清空舊題目
   showChoosing.value = false
   wordChoices.value = []
+  correctPlayersId.value = []
   clearInterval(chooseTimerInterval)
 
   // 載入這回合的資料
@@ -482,7 +518,10 @@ const endGame = async () => {
             >
               😊
             </div>
-            <span class="flex-1 text-xs font-extrabold text-slate-700">{{ s.playerName }}</span>
+            <span class="flex-1 text-xs font-extrabold text-slate-700 truncate">
+              <span v-if="player.playerId === roomInfo?.roomOwnerId" title="房主">👑</span>
+              {{ s.playerName }}
+            </span>
             <span class="text-xs font-extrabold text-indigo-400">{{ s.score }} 分</span>
           </div>
         </div>
@@ -571,6 +610,7 @@ const endGame = async () => {
               <span v-if="player.playerId === currentDrawerId" class="text-xs text-amber-500"
                 >✏️</span
               >
+              <span v-if="correctPlayersId.includes(player.playerId)" class="text-xs">✅</span>
               <span class="text-xs font-extrabold text-indigo-400">{{ player.score }}</span>
               <span
                 v-if="player.lastGain"
@@ -606,14 +646,14 @@ const endGame = async () => {
             <input
               v-model="guessInput"
               type="text"
-              placeholder="輸入猜測..."
-              :disabled="isDrawer"
+              :placeholder="hasGuessedCorrect ? '你已經猜對了 🎉' : '輸入猜測...'"
+              :disabled="isDrawer || hasGuessedCorrect"
               @keyup.enter="sendGuess"
               class="flex-1 border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-400 disabled:bg-slate-100 disabled:text-slate-400"
             />
             <button
               @click="sendGuess"
-              :disabled="isDrawer"
+              :disabled="isDrawer || hasGuessedCorrect"
               class="px-3 py-2 bg-indigo-400 text-white font-extrabold text-xs rounded-xl border-b-2 border-indigo-600 hover:opacity-90 cursor-pointer disabled:opacity-50"
             >
               送

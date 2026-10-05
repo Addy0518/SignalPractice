@@ -103,4 +103,68 @@ public class UserService(
 
         return ApiResponseHelper.Success(response);
     }
+
+    /// <summary>
+    /// 查看個人歷史紀錄
+    /// </summary>
+    /// <param name="userId">使用者 ID</param>
+    /// <returns>房間資訊</returns>
+    public async Task<ApiResponse<List<UserRecordResponse>>> GetGameRecordInfo(int userId)
+    {
+        var allRecords = await context
+            .GameRecordPlayers.Where(p => p.PlayerId == userId)
+            .OrderByDescending(x => x.GameRecord.CreateTime)
+            .Select(p => new UserRecordResponse
+            {
+                GameRecordId = p.GameRecordId,
+                RoomName = p.GameRecord.RoomName,
+                TotalRound = p.GameRecord.TotalRound,
+                CreateTime = p.GameRecord.CreateTime,
+                Score = p.Score,
+                Rank = p.Rank,
+            })
+            .Take(50)
+            .ToListAsync();
+
+        return ApiResponseHelper.Success(allRecords);
+    }
+
+    /// <summary>
+    /// 查看歷史紀錄的詳細資訊
+    /// </summary>
+    /// <param name="gameRecordId">遊戲紀錄 ID</param>
+    /// <param name="userId">使用者 ID</param>
+    /// <returns>詳細資訊</returns>
+    public async Task<ApiResponse<RecordDetailsResponse>> GetRecordDetailsInfo(int gameRecordId, int userId)
+    {
+        var record = await context
+            .GameRecords.Where(r => r.GameRecordId == gameRecordId)
+            .Select(r => new RecordDetailsResponse
+            {
+                GameRecordId = r.GameRecordId,
+                RoomName = r.RoomName,
+                TotalRound = r.TotalRound,
+                RoundSeconds = r.RoundSeconds,
+                CreateTime = r.CreateTime,
+                Players = r
+                    .GameRecordPlayers.OrderBy(p => p.Rank)
+                    .Select(p => new RecordPlayerResponse
+                    {
+                        PlayerId = p.PlayerId,
+                        PlayerName = p.PlayerName,
+                        Score = p.Score,
+                        Rank = p.Rank,
+                    })
+                    .ToList(),
+            })
+            .FirstOrDefaultAsync();
+
+        if (record == null || !record.Players.Any(p => p.PlayerId == userId))
+        {
+            var errors = new Dictionary<string, string[]> { { "GameRecord", new[] { "查無此場紀錄！" } } };
+            return ApiResponseHelper.RequestError<RecordDetailsResponse>(errors);
+        }
+
+        return ApiResponseHelper.Success(record);
+    }
 }

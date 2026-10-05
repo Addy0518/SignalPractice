@@ -9,6 +9,8 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const GetGameRecordInfo: typeof import('./api/userService.js').GetGameRecordInfo
+  const GetRecordDetailsInfo: typeof import('./api/userService.js').GetRecordDetailsInfo
   const acceptHMRUpdate: typeof import('pinia').acceptHMRUpdate
   const accountInstance: typeof import('./api/accountInstance.js').default
   const actions: typeof import('./stores/gameResult.js').actions
@@ -41,6 +43,10 @@ declare global {
   const getEnumDescription: typeof import('./common/enum.js').getEnumDescription
   const getError400Message: typeof import('./common/method.js').getError400Message
   const getFirstDayOfMonth: typeof import('./common/formats.js').getFirstDayOfMonth
+  const getGameRecordInfo: typeof import('./api/userService.js').getGameRecordInfo
+  const getGameRecordInfoAPI: typeof import('./api/userService.js').getGameRecordInfoAPI
+  const getRecordDetailsInfo: typeof import('./api/userService.js').getRecordDetailsInfo
+  const getRecordDetailsInfoAPI: typeof import('./api/userService.js').getRecordDetailsInfoAPI
   const getRoomInfoAPI: typeof import('./api/roomService.js').getRoomInfoAPI
   const getToast: typeof import('./common/toast.js').getToast
   const guestLoginAPI: typeof import('./api/userService.js').guestLoginAPI
@@ -181,6 +187,8 @@ declare module 'vue' {
     readonly getEnumDescription: UnwrapRef<typeof import('./common/enum.js')['getEnumDescription']>
     readonly getError400Message: UnwrapRef<typeof import('./common/method.js')['getError400Message']>
     readonly getFirstDayOfMonth: UnwrapRef<typeof import('./common/formats.js')['getFirstDayOfMonth']>
+    readonly getGameRecordInfoAPI: UnwrapRef<typeof import('./api/userService.js')['getGameRecordInfoAPI']>
+    readonly getRecordDetailsInfoAPI: UnwrapRef<typeof import('./api/userService.js')['getRecordDetailsInfoAPI']>
     readonly getRoomInfoAPI: UnwrapRef<typeof import('./api/roomService.js')['getRoomInfoAPI']>
     readonly getToast: UnwrapRef<typeof import('./common/toast.js')['getToast']>
     readonly guestLoginAPI: UnwrapRef<typeof import('./api/userService.js')['guestLoginAPI']>
