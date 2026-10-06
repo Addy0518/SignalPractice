@@ -11,6 +11,11 @@
 *.sln.docstates
 *.env
 
+# 正式環境設定（含真密碼，只存在伺服器上）
+appsettings.Production.json
+appsettings.*.local.json
+
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
