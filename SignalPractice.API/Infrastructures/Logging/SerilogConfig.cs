@@ -72,7 +72,7 @@ public class SerilogConfig
                 outputTemplate: "[{Timestamp:yyyy/MM/dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{RequestBody}{ResponseBody}{NewLine}{Exception}"
             )
             .WriteTo.MSSqlServer(
-                connectionString: "Data Source=localhost\\SQLEXPRESS;Initial Catalog=AccountPractice;User ID=angey920518;Password=Andy920518!;TrustServerCertificate=True;",
+                connectionString: "Data Source=localhost\\SQLEXPRESS;Initial Catalog=AccountPractice;User ID=angey920518;Password=Andy920518;TrustServerCertificate=True;",
                 sinkOptions: new Serilog.Sinks.MSSqlServer.MSSqlServerSinkOptions
                 {
                     TableName = "Logs",

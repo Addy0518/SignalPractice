@@ -120,6 +120,8 @@ const showRoundEnd = ref(false)
 const roundEndData = ref(null)
 let roundEndTimer = null
 let pendingNextEvent = null
+const roundEndLeft = ref(5)
+let roundEndInterval = null
 
 /*
    吐司
@@ -274,6 +276,14 @@ onMounted(async () => {
     // 防止上一輪殘留的計時器還在跑 ( 保險 )
     clearTimeout(roundEndTimer)
 
+    // 顯示彈窗時間倒數
+    roundEndLeft.value = 5
+    clearInterval(roundEndInterval)
+    roundEndInterval = setInterval(() => {
+      roundEndLeft.value = Math.max(0, roundEndLeft.value - 1)
+      if (roundEndLeft.value <= 0) clearInterval(roundEndInterval)
+    }, 1000)
+
     // 計時器 , 設定為五秒關閉彈窗
     roundEndTimer = setTimeout(() => {
       showRoundEnd.value = false
@@ -354,6 +364,8 @@ onUnmounted(() => {
 */
 const applyGameStarted = (data) => {
   // 題目選好就關掉畫面跟清空舊題目
+  lines.value = []
+  currentLine.value = []
   showChoosing.value = false
   wordChoices.value = []
   correctPlayersId.value = []
@@ -396,7 +408,7 @@ const applyGameEnd = (data) => {
   記錄起始座標到 currentLine
 */
 const handleMouseDown = (e) => {
-  if (!isDrawer.value) return
+  if (!isDrawer.value || showRoundEnd.value) return
   isDrawing.value = true
   const pos = e.target.getStage().getPointerPosition()
   currentLine.value = [pos.x, pos.y]
@@ -519,13 +531,17 @@ const endGame = async () => {
               😊
             </div>
             <span class="flex-1 text-xs font-extrabold text-slate-700 truncate">
-              <span v-if="player.playerId === roomInfo?.roomOwnerId" title="房主">👑</span>
+              <span v-if="s.playerId === roomInfo?.roomOwnerId" title="房主">👑</span>
               {{ s.playerName }}
             </span>
             <span class="text-xs font-extrabold text-indigo-400">{{ s.score }} 分</span>
           </div>
         </div>
-        <p class="text-xs text-slate-400">下一輪即將開始…</p>
+        <p class="text-xs text-slate-400">
+          {{ roundEndData?.isLastRound ? '遊戲結束，即將顯示結算' : '下一輪即將開始' }}（{{
+            roundEndLeft
+          }}）
+        </p>
       </div>
     </div>
     <!-- #endregion -->

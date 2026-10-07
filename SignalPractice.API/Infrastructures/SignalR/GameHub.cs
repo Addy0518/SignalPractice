@@ -65,6 +65,19 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         private static readonly ConcurrentDictionary<int, List<int>> _canChooseWords = new();
 
         /// <summary>
+        /// 一樣 , 這個則是用來暫存房間內正在畫的圖案
+        /// 會有多條線所以用 List
+        /// </summary>
+        private static readonly ConcurrentDictionary<int, List<DrawStroke>> _roomStrokes = new();
+
+        /// <summary>
+        /// record 跟 class 差不多 , 專門存 「 只讀不改 」 的資料 , 會自動產生建構子
+        ///
+        /// point 座標陣列 , color 顏色 , StrokeWidth 線條寬度
+        /// </summary>
+        public record DrawStroke(float[] Points, string Color, int StrokeWidth);
+
+        /// <summary>
         /// 每個房間目前這輪計時器的取消權杖
         /// 用來在提早結束（猜對）時取消還沒到期的背景計時器，避免它晚一步醒來時拿舊資料誤觸發下一輪的 EndRound
         /// </summary>
@@ -79,6 +92,11 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         /// 一樣是取消權杖 , 不過是斷線重連的
         /// </summary>
         private static readonly ConcurrentDictionary<int, CancellationTokenSource> _disconnTimerCts = new();
+
+        /// <summary>
+        /// 紀錄每個房間目前這輪是否已經結束
+        /// </summary>
+        private static readonly ConcurrentDictionary<int, bool> _roundEnded = new();
 
         /// <summary>
         /// 斷開連線
@@ -198,6 +216,30 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                     if (room.CurrentDrawerId == userId)
                     {
                         await Clients.Caller.SendAsync("YourTopic", new { Word = room.CurrentTopic });
+                    }
+
+                    // 補發送畫線資料給重新進來的這個人
+                    if (_roomStrokes.TryGetValue(roomId, out var strokes))
+                    {
+                        List<DrawStroke> strokes1;
+                        // 把畫線資料存進來 , lock 是鎖起來這個動作 , 避免同時間有多個動作動到 List
+                        lock (strokes)
+                        {
+                            strokes1 = strokes.ToList();
+                        }
+
+                        foreach (var s in strokes1)
+                        {
+                            await Clients.Caller.SendAsync(
+                                "ReceiveDraw",
+                                new
+                                {
+                                    Points = s.Points,
+                                    Color = s.Color,
+                                    StrokeWidth = s.StrokeWidth,
+                                }
+                            );
+                        }
                     }
                 }
             }
@@ -559,6 +601,10 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                 // 如果所有人都猜對了就提早結束這回合
                 if (correctPlayers >= onlinePlayers.Count)
                 {
+                    // _roundEnded 如果記錄了這回合已經結束 ( true ) , 這裡再 TryAdd 就會失敗 , 代表已經有人提早結束這回合了 , 就不用再執行 EndRound 了
+                    if (!_roundEnded.TryAdd(roomId, true))
+                        return;
+
                     if (_roundTimerCts.TryGetValue(roomId, out var cts))
                     {
                         cts.Cancel();
@@ -605,6 +651,19 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
             if (userId != room.CurrentDrawerId)
                 return;
 
+            // 如果這輪已經結束了就不要再傳送畫線資料了
+            if (_roundEnded.ContainsKey(roomId))
+                return;
+
+            // 暫存剛剛的畫線資料 , GetOrAdd 就是找這個 roomId 裡的資料 , 有就回傳 , 沒有就建立新的 List 等畫線資料存進來
+            var list = _roomStrokes.GetOrAdd(roomId, _ => new List<DrawStroke>());
+
+            // 把畫線資料存進來 , lock 是鎖起來這個動作 , 避免同時間有多個動作動到 List
+            lock (list)
+            {
+                list.Add(new DrawStroke(points, color, strokeWidth));
+            }
+
             // OthersInGroup 廣播給所有人除了自己
             await Clients
                 .OthersInGroup(roomId.ToString())
@@ -633,6 +692,8 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
             // 只有畫畫的人才能清除畫布
             if (userId != room.CurrentDrawerId)
                 return;
+
+            _roomStrokes.TryRemove(roomId, out _);
 
             // 廣播給所有人要清除畫布了
             await Clients.OthersInGroup(roomId.ToString()).SendAsync("ClearDraw");
@@ -800,6 +861,12 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
         /// </summary>
         private async Task ApplyChosenWord(int roomId, WorkBank word, Room room, SignalPracticeContext dbContext)
         {
+            // 開始遊戲時保險先清掉畫線資料 , 避免上一輪殘留
+            _roomStrokes.TryRemove(roomId, out _);
+
+            // 也清掉這輪是否已經結束的標記 , 避免上一輪殘留
+            _roundEnded.TryRemove(roomId, out _);
+
             var drawer = room.RoomPlayers.FirstOrDefault(p => p.PlayerId == room.CurrentDrawerId);
             if (drawer == null)
                 return;
@@ -848,6 +915,9 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                 if (room == null || room.RoomStatus != RoomStatusEnum.遊戲中)
                     return;
 
+                // 標記這輪已經結束
+                _roundEnded[room.RoomId] = true;
+
                 // 公布這輪答案和分數給所有人
                 await hubContext
                     .Clients.Group(roomId.ToString())
@@ -856,6 +926,7 @@ namespace Lab.Accounting.API.Infrastructures.SignalR
                         new
                         {
                             Word = room.CurrentTopic,
+                            IsLastRound = room.CurrentRound >= room.TotalRound,
                             Scores = room.RoomPlayers.Select(p => new
                             {
                                 p.PlayerId,
