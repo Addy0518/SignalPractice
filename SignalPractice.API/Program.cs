@@ -92,7 +92,9 @@ try
                     .WithOrigins(
                         "http://localhost:5173",
                         "http://localhost",
-                        "https://veneering-bannister-outlook.ngrok-free.dev"
+                        "https://veneering-bannister-outlook.ngrok-free.dev",
+                        "http://www.drawandguess.com",
+                        "https://www.drawandguess.com"
                     )
                     // 允許任何 HTTP 方法（GET、POST、PUT、DELETE 等）
                     .AllowAnyMethod()
@@ -230,7 +232,7 @@ try
     var app = builder.Build();
 
     // 在非開發環境下強制 HTTP 請求重導到 HTTPS ( 加密安全 )
-    if (!app.Environment.IsDevelopment())
+    if (!app.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
     {
         app.UseHttpsRedirection();
     }
